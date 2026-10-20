@@ -7,14 +7,15 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/opencode-ai/opencode/internal/agentdef"
 	"github.com/opencode-ai/opencode/internal/config"
 	"github.com/opencode-ai/opencode/internal/llm/models"
 	"github.com/opencode-ai/opencode/internal/logging"
 )
 
-func GetAgentPrompt(agentName config.AgentName, provider models.ModelProvider) string {
+func GetAgentPrompt(name string, provider models.ModelProvider) string {
 	basePrompt := ""
-	switch agentName {
+	switch config.AgentName(name) {
 	case config.AgentCoder:
 		basePrompt = CoderPrompt(provider)
 	case config.AgentTitle:
@@ -24,10 +25,10 @@ func GetAgentPrompt(agentName config.AgentName, provider models.ModelProvider) s
 	case config.AgentSummarizer:
 		basePrompt = SummarizerPrompt(provider)
 	default:
-		basePrompt = "You are a helpful assistant"
+		basePrompt = customAgentPrompt(name)
 	}
 
-	if agentName == config.AgentCoder || agentName == config.AgentTask {
+	if name == string(config.AgentCoder) || name == string(config.AgentTask) {
 		// Add context from project-specific instruction files if they exist
 		contextContent := getContextFromPaths()
 		logging.Debug("Context content", "Context", contextContent)
@@ -36,6 +37,17 @@ func GetAgentPrompt(agentName config.AgentName, provider models.ModelProvider) s
 		}
 	}
 	return basePrompt
+}
+
+// customAgentPrompt resolves the prompt for an agent registered dynamically,
+// reading its body lazily. Falls back to a generic prompt when unavailable.
+func customAgentPrompt(name string) string {
+	if def, ok := agentdef.Get().Get(name); ok {
+		if body, err := def.Prompt(); err == nil && strings.TrimSpace(body) != "" {
+			return body
+		}
+	}
+	return "You are a helpful assistant"
 }
 
 var (

@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/opencode-ai/opencode/internal/agentdef"
 	"github.com/opencode-ai/opencode/internal/config"
 	"github.com/opencode-ai/opencode/internal/llm/models"
 	"github.com/opencode-ai/opencode/internal/llm/prompt"
@@ -52,7 +53,7 @@ type Service interface {
 	Cancel(sessionID string)
 	IsSessionBusy(sessionID string) bool
 	IsBusy() bool
-	Update(agentName config.AgentName, modelID models.ModelID) (models.Model, error)
+	Update(agentName string, modelID models.ModelID) (models.Model, error)
 	Summarize(ctx context.Context, sessionID string) error
 }
 
@@ -71,26 +72,31 @@ type agent struct {
 }
 
 func NewAgent(
-	agentName config.AgentName,
+	name string,
 	sessions session.Service,
 	messages message.Service,
 	agentTools []tools.BaseTool,
 ) (Service, error) {
-	agentProvider, err := createAgentProvider(agentName)
+	agentProvider, err := createAgentProvider(name)
 	if err != nil {
 		return nil, err
 	}
+	// Primary agents (selectable in the TUI) generate titles and can
+	// summarize; builtin helpers (title, summarizer, task) and subagents
+	// skip both. A name missing from the registry is treated as primary so
+	// inline-configured agents keep the behavior.
+	def, _ := agentdef.Get().Get(name)
+	isPrimary := def == nil || def.Mode != agentdef.ModeSubagent
 	var titleProvider provider.Provider
-	// Only generate titles for the coder agent
-	if agentName == config.AgentCoder {
-		titleProvider, err = createAgentProvider(config.AgentTitle)
+	if isPrimary {
+		titleProvider, err = createAgentProvider(string(config.AgentTitle))
 		if err != nil {
 			return nil, err
 		}
 	}
 	var summarizeProvider provider.Provider
-	if agentName == config.AgentCoder {
-		summarizeProvider, err = createAgentProvider(config.AgentSummarizer)
+	if isPrimary {
+		summarizeProvider, err = createAgentProvider(string(config.AgentSummarizer))
 		if err != nil {
 			return nil, err
 		}
@@ -513,12 +519,12 @@ func (a *agent) TrackUsage(ctx context.Context, sessionID string, model models.M
 	return nil
 }
 
-func (a *agent) Update(agentName config.AgentName, modelID models.ModelID) (models.Model, error) {
+func (a *agent) Update(agentName string, modelID models.ModelID) (models.Model, error) {
 	if a.IsBusy() {
 		return models.Model{}, fmt.Errorf("cannot change model while processing requests")
 	}
 
-	if err := config.UpdateAgentModel(agentName, modelID); err != nil {
+	if err := config.UpdateAgentModel(config.AgentName(agentName), modelID); err != nil {
 		return models.Model{}, fmt.Errorf("failed to update config: %w", err)
 	}
 
@@ -703,15 +709,50 @@ func (a *agent) Summarize(ctx context.Context, sessionID string) error {
 	return nil
 }
 
-func createAgentProvider(agentName config.AgentName) (provider.Provider, error) {
+func createAgentProvider(name string) (provider.Provider, error) {
 	cfg := config.Get()
-	agentConfig, ok := cfg.Agents[agentName]
-	if !ok {
-		return nil, fmt.Errorf("agent %s not found", agentName)
+
+	def, hasDef := agentdef.Get().Get(name)
+
+	var (
+		model           models.Model
+		maxTokens       int64
+		reasoningEffort string
+	)
+
+	if hasDef && def.Model != "" {
+		modelID, ok := models.ResolveModelID(def.Model)
+		if !ok {
+			return nil, fmt.Errorf("model %s not supported", def.Model)
+		}
+		model = models.SupportedModels[modelID]
+		maxTokens = model.DefaultMaxTokens
+		reasoningEffort = def.ReasoningEffort
+	} else {
+		agentCfg, ok := cfg.Agents[config.AgentName(name)]
+		if !ok {
+			// Custom agents without an explicit model inherit from the coder.
+			agentCfg, ok = cfg.Agents[config.AgentCoder]
+			if !ok {
+				return nil, fmt.Errorf("agent %s is not configured", name)
+			}
+		}
+		model, ok = models.SupportedModels[agentCfg.Model]
+		if !ok {
+			return nil, fmt.Errorf("model %s not supported", agentCfg.Model)
+		}
+		maxTokens = model.DefaultMaxTokens
+		if agentCfg.MaxTokens > 0 {
+			maxTokens = agentCfg.MaxTokens
+		}
+		reasoningEffort = agentCfg.ReasoningEffort
 	}
-	model, ok := models.SupportedModels[agentConfig.Model]
-	if !ok {
-		return nil, fmt.Errorf("model %s not supported", agentConfig.Model)
+
+	if hasDef && def.MaxTokens > 0 {
+		maxTokens = def.MaxTokens
+	}
+	if maxTokens <= 0 {
+		maxTokens = config.MaxTokensFallbackDefault
 	}
 
 	providerCfg, ok := cfg.Providers[model.Provider]
@@ -721,24 +762,21 @@ func createAgentProvider(agentName config.AgentName) (provider.Provider, error) 
 	if providerCfg.Disabled {
 		return nil, fmt.Errorf("provider %s is not enabled", model.Provider)
 	}
-	maxTokens := model.DefaultMaxTokens
-	if agentConfig.MaxTokens > 0 {
-		maxTokens = agentConfig.MaxTokens
-	}
+
 	opts := []provider.ProviderClientOption{
 		provider.WithAPIKey(providerCfg.APIKey),
 		provider.WithModel(model),
-		provider.WithSystemMessage(prompt.GetAgentPrompt(agentName, model.Provider)),
+		provider.WithSystemMessage(prompt.GetAgentPrompt(name, model.Provider)),
 		provider.WithMaxTokens(maxTokens),
 	}
 	if model.Provider == models.ProviderOpenAI || model.Provider == models.ProviderLocal && model.CanReason {
 		opts = append(
 			opts,
 			provider.WithOpenAIOptions(
-				provider.WithReasoningEffort(agentConfig.ReasoningEffort),
+				provider.WithReasoningEffort(reasoningEffort),
 			),
 		)
-	} else if model.Provider == models.ProviderAnthropic && model.CanReason && agentName == config.AgentCoder {
+	} else if model.Provider == models.ProviderAnthropic && model.CanReason && name == string(config.AgentCoder) {
 		opts = append(
 			opts,
 			provider.WithAnthropicOptions(

@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/opencode-ai/opencode/internal/agentdef"
 	"github.com/opencode-ai/opencode/internal/llm/models"
 	"github.com/opencode-ai/opencode/internal/logging"
 	"github.com/spf13/viper"
@@ -212,7 +213,79 @@ func Load(workingDir string, debug bool) (*Config, error) {
 		Model:     cfg.Agents[AgentTitle].Model,
 		MaxTokens: 80,
 	}
+
+	// Discover and register agent definitions (builtins + global + project).
+	if err := loadAgentDefinitions(workingDir); err != nil {
+		logging.Warn("failed to load agent definitions", "error", err)
+	}
 	return cfg, nil
+}
+
+// agentSearchDirs returns the global directories scanned for agent markdown
+// files, mirroring the config search paths used by viper.
+func agentSearchDirs() []string {
+	var dirs []string
+	home, err := os.UserHomeDir()
+	if err == nil && home != "" {
+		dirs = append(dirs, filepath.Join(home, ".opencode"))
+	}
+	xdg := os.Getenv("XDG_CONFIG_HOME")
+	if xdg == "" && home != "" {
+		xdg = filepath.Join(home, ".config")
+	}
+	if xdg != "" {
+		dirs = append(dirs, filepath.Join(xdg, appName))
+	}
+	return dirs
+}
+
+// loadAgentDefinitions builds the process-wide agent registry from builtins,
+// global directories and the project directory.
+func loadAgentDefinitions(workingDir string) error {
+	reg, err := agentdef.Load(agentdef.Options{
+		GlobalDirs: agentSearchDirs(),
+		ProjectDir: filepath.Join(workingDir, defaultDataDirectory),
+		Builtins:   builtinDefinitions(),
+	})
+	if err != nil {
+		return err
+	}
+	agentdef.Set(reg)
+	return nil
+}
+
+// builtinDefinitions returns the definitions for the agents built into opencode.
+// Their prompts are resolved by the prompt package.
+func builtinDefinitions() []*agentdef.Definition {
+	return []*agentdef.Definition{
+		{
+			Name:        string(AgentCoder),
+			Description: "Primary coding agent with full tool access",
+			Mode:        agentdef.ModePrimary,
+			Builtin:     true,
+		},
+		{
+			Name:        string(AgentTask),
+			Description: "Read-only subagent for searching the codebase",
+			Mode:        agentdef.ModeSubagent,
+			Hidden:      true,
+			Builtin:     true,
+		},
+		{
+			Name:        string(AgentTitle),
+			Description: "Generates short session titles",
+			Mode:        agentdef.ModeSubagent,
+			Hidden:      true,
+			Builtin:     true,
+		},
+		{
+			Name:        string(AgentSummarizer),
+			Description: "Summarizes session context for compaction",
+			Mode:        agentdef.ModeSubagent,
+			Hidden:      true,
+			Builtin:     true,
+		},
+	}
 }
 
 // configureViper sets up viper's configuration paths and environment variables.
@@ -912,6 +985,25 @@ func UpdateAgentModel(agentName AgentName, modelID models.ModelID) error {
 		}
 		config.Agents[agentName] = newAgentCfg
 	})
+}
+
+// AgentModelID resolves the effective model for an agent by name: the agent's
+// config entry (including overrides applied through the model dialog) wins,
+// then the model declared in its definition, then the coder model. Used by the
+// TUI to display the model of whichever agent is active.
+func AgentModelID(name AgentName) models.ModelID {
+	if cfg == nil {
+		return ""
+	}
+	if agentCfg, ok := cfg.Agents[name]; ok && agentCfg.Model != "" {
+		return agentCfg.Model
+	}
+	if def, ok := agentdef.Get().Get(string(name)); ok && def.Model != "" {
+		if id, ok := models.ResolveModelID(def.Model); ok {
+			return id
+		}
+	}
+	return cfg.Agents[AgentCoder].Model
 }
 
 // UpdateTheme updates the theme in the configuration and writes it to the config file.
