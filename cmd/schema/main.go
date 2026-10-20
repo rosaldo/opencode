@@ -316,6 +316,25 @@ func generateSchema() map[string]any {
 
 	schema["properties"].(map[string]any)["providers"] = providerSchema
 
+	// Add plugins (Spec 10): ordered list of package/path strings or objects.
+	schema["properties"].(map[string]any)["plugins"] = map[string]any{
+		"type":        "array",
+		"description": "Ordered plugins to load; \"-name\" disables a discovered plugin",
+		"items": map[string]any{
+			"oneOf": []any{
+				map[string]any{"type": "string"},
+				map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"package": map[string]any{"type": "string"},
+						"options": map[string]any{"type": "object"},
+					},
+					"required": []string{"package"},
+				},
+			},
+		},
+	}
+
 	// Add agents (v2). Every agent — builtin override or custom — is described
 	// by the same definition, whether it comes from the "agents" map of the
 	// JSON config or from a markdown file's frontmatter (Spec 13).

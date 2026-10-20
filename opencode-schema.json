@@ -1023,6 +1023,31 @@
       },
       "type": "array"
     },
+    "plugins": {
+      "description": "Ordered plugins to load; \"-name\" disables a discovered plugin",
+      "items": {
+        "oneOf": [
+          {
+            "type": "string"
+          },
+          {
+            "properties": {
+              "options": {
+                "type": "object"
+              },
+              "package": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "package"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "type": "array"
+    },
     "policies": {
       "description": "Ordered governance policies (provider.use, tool.use, MCP/skill/plugin); the last matching rule wins",
       "items": {

@@ -77,6 +77,29 @@ Recomendação: (A) como base, com um manifesto (`plugin.json`) declarando hooks
 - Protocolo: teste com plugin fake (executável de teste) disparando hook e registrando tool.
 - Integração: hook negando um `bash`.
 
+## Status
+
+- **10a loader + manifesto** — Verificado. `Config.Plugins []PluginSpec` (`internal/config/aux.go`;
+  string, `{package,options}` e `"-name"` desabilita). Pacote **novo** `internal/plugin`:
+  `Loader` descobre em `<projeto>/.opencode/plugins`, `~/.config/opencode/plugins` e
+  `/etc/opencode/plugins`; lê `plugin.json` (`Manifest`: name/version/command/hooks/tools);
+  plugins por path explícito, por nome (busca nos diretórios) ou no `PATH`; ordem explícita
+  primeiro; `"-name"` remove; falha de um plugin vira aviso e não derruba o resto. Testes:
+  `internal/plugin/loader_test.go`, `internal/config/plugins_test.go`. Schema emite `plugins`.
+- **10b protocolo + hooks** — Verificado. Modelo **(A) processo externo via stdio JSON-RPC**
+  (`client.go`): `Start`, `Call`, `RunHook`, `Close`; linhas JSON com `id`/`method`/`params`/`result`.
+  `Manager` (`manager.go`): `Load` (isola falhas de start), `RunToolBeforeExecute`
+  (**primeiro que nega vence**, mutações mescladas), `RunToolAfterExecute`, `RunSessionStart`,
+  `RunChatParams` (último model/params vence); timeout de 5s por hook; singleton
+  `SetManager`/`GetManager`. Integração no loop de tools (`internal/llm/agent/agent.go`): o hook
+  `tool.before_execute` pode **negar** (vira erro de tool) ou **mutar** o input; `tool.after_execute`
+  é notificado. Boot/close em `cmd/root.go`/`internal/app` (`initPlugins`, `Shutdown`). Testes:
+  `internal/plugin/client_test.go` (executável fake via `TestHelperProcess`; deny de `bash`,
+  mutate, chat.params, isolamento).
+- **10c custom tools + UI** — Pendente. Tools declaradas por plugins (registro no `FullToolSet`
+  com gating/permissão) e diálogo de plugins na TUI ficam para uma fase dedicada. O manifesto já
+  declara `tools`; falta o wiring de registro/execução e a UI.
+
 ## Riscos
 
 - Modelo de execução é a decisão central — prototipar (A) antes de comprometer API.

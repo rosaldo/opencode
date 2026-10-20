@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -17,6 +18,7 @@ import (
 	"github.com/opencode-ai/opencode/internal/logging"
 	"github.com/opencode-ai/opencode/internal/message"
 	"github.com/opencode-ai/opencode/internal/permission"
+	"github.com/opencode-ai/opencode/internal/plugin"
 	"github.com/opencode-ai/opencode/internal/pubsub"
 	"github.com/opencode-ai/opencode/internal/session"
 )
@@ -393,10 +395,37 @@ func (a *agent) streamAndHandleEvents(ctx context.Context, sessionID string, msg
 				}
 				continue
 			}
+
+			// Plugin hook: tool.before_execute can deny or mutate the call
+			// (Spec 10b). A hook failure is isolated and does not block.
+			input := toolCall.Input
+			if mgr := plugin.GetManager(); mgr != nil {
+				var args map[string]any
+				_ = json.Unmarshal([]byte(input), &args)
+				decision := mgr.RunToolBeforeExecute(ctx, toolCall.Name, args)
+				if !decision.Allow {
+					msg := decision.Message
+					if msg == "" {
+						msg = "Tool execution denied by plugin"
+					}
+					toolResults[i] = message.ToolResult{
+						ToolCallID: toolCall.ID,
+						Content:    msg,
+						IsError:    true,
+					}
+					continue
+				}
+				if len(decision.Mutate) > 0 {
+					if merged, err := json.Marshal(mergeArgs(args, decision.Mutate)); err == nil {
+						input = string(merged)
+					}
+				}
+			}
+
 			toolResult, toolErr := tool.Run(ctx, tools.ToolCall{
 				ID:    toolCall.ID,
 				Name:  toolCall.Name,
-				Input: toolCall.Input,
+				Input: input,
 			})
 			if toolErr != nil {
 				if errors.Is(toolErr, permission.ErrorPermissionDenied) {
@@ -421,6 +450,11 @@ func (a *agent) streamAndHandleEvents(ctx context.Context, sessionID string, msg
 				Content:    toolResult.Content,
 				Metadata:   toolResult.Metadata,
 				IsError:    toolResult.IsError,
+			}
+			if mgr := plugin.GetManager(); mgr != nil {
+				var args map[string]any
+				_ = json.Unmarshal([]byte(input), &args)
+				mgr.RunToolAfterExecute(ctx, toolCall.Name, args, toolResult.Content)
 			}
 		}
 	}
@@ -804,4 +838,17 @@ func createAgentProvider(name string) (provider.Provider, error) {
 	}
 
 	return agentProvider, nil
+}
+
+// mergeArgs overlays plugin mutations onto the parsed tool arguments, creating a
+// shallow copy so the original is not modified (Spec 10b).
+func mergeArgs(args, mutate map[string]any) map[string]any {
+	out := make(map[string]any, len(args)+len(mutate))
+	for k, v := range args {
+		out[k] = v
+	}
+	for k, v := range mutate {
+		out[k] = v
+	}
+	return out
 }

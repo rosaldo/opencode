@@ -15,6 +15,7 @@ import (
 	"github.com/opencode-ai/opencode/internal/format"
 	"github.com/opencode-ai/opencode/internal/llm/agent"
 	"github.com/opencode-ai/opencode/internal/logging"
+	"github.com/opencode-ai/opencode/internal/plugin"
 	"github.com/opencode-ai/opencode/internal/pubsub"
 	"github.com/opencode-ai/opencode/internal/tui"
 	"github.com/opencode-ai/opencode/internal/version"
@@ -108,6 +109,9 @@ to assist developers in writing, debugging, and understanding code directly from
 		// Initialize MCP tools early for both modes
 		initMCPTools(ctx, app)
 
+		// Load plugins (Spec 10). Failures are isolated and logged.
+		initPlugins()
+
 		// Non-interactive mode
 		if prompt != "" {
 			// Run non-interactive flow using the App method
@@ -191,6 +195,19 @@ func attemptTUIRecovery(program *tea.Program) {
 	// We could try to restart the TUI or gracefully exit
 	// For now, we'll just quit the program to avoid further issues
 	program.Quit()
+}
+
+// initPlugins loads plugins declared in config and installs the global manager.
+func initPlugins() {
+	cfg := config.Get()
+	if cfg == nil {
+		return
+	}
+	mgr := plugin.NewManager(cfg.WorkingDir)
+	for _, w := range mgr.Load(cfg.Plugins) {
+		logging.Warn(w)
+	}
+	plugin.SetManager(mgr)
 }
 
 func initMCPTools(ctx context.Context, app *app.App) {

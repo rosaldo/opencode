@@ -200,6 +200,11 @@ type Config struct {
 	// skill/plugin blocking). Evaluated like permissions: last matching wins,
 	// and the highest-precedence config file comes last (Spec 07).
 	Policies []agentdef.PermissionRule `json:"policies,omitempty" mapstructure:"-"`
+
+	// Plugins is the ordered list of plugins to load (Spec 10). A bare string is
+	// a package/path; an object may set options; a "-name" entry disables a
+	// plugin discovered by convention.
+	Plugins []PluginSpec `json:"plugins,omitempty" mapstructure:"-"`
 }
 
 // Application constants

@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	"strings"
 
 	"github.com/opencode-ai/opencode/internal/agentdef"
 	"github.com/opencode-ai/opencode/internal/logging"
@@ -189,6 +190,41 @@ type WorktreeConfig struct {
 	Directory string `json:"directory,omitempty"`
 }
 
+// PluginSpec is one entry of the v2 "plugins" list (Spec 10). It accepts either
+// a bare package/path string or an object {"package": ..., "options": {...}}.
+// A package starting with "-" disables the named plugin.
+type PluginSpec struct {
+	Package  string         `json:"package"`
+	Options  map[string]any `json:"options,omitempty"`
+	Disabled bool           `json:"-"`
+}
+
+// UnmarshalJSON accepts a string or the {package, options} object form.
+func (p *PluginSpec) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err == nil {
+		p.setPackage(s)
+		return nil
+	}
+	type spec PluginSpec
+	var v spec
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	*p = PluginSpec(v)
+	p.setPackage(v.Package)
+	return nil
+}
+
+func (p *PluginSpec) setPackage(name string) {
+	if strings.HasPrefix(name, "-") {
+		p.Disabled = true
+		p.Package = strings.TrimPrefix(name, "-")
+		return
+	}
+	p.Package = name
+}
+
 // auxConfig mirrors the auxiliary keys of Config so they can be decoded from the
 // raw merged map with json (honouring the custom UnmarshalJSON on polymorphic
 // types).
@@ -210,6 +246,7 @@ type auxConfig struct {
 	Username     string                    `json:"username,omitempty"`
 	Permissions  []agentdef.PermissionRule `json:"permissions,omitempty"`
 	Policies     []agentdef.PermissionRule `json:"policies,omitempty"`
+	Plugins      []PluginSpec              `json:"plugins,omitempty"`
 }
 
 // applyAuxConfig decodes the auxiliary v2 keys from the merged config map into
@@ -244,6 +281,7 @@ func applyAuxConfig(merged map[string]any) error {
 	cfg.Username = aux.Username
 	cfg.Permissions = aux.Permissions
 	cfg.Policies = aux.Policies
+	cfg.Plugins = aux.Plugins
 
 	applyAuxDefaults()
 	validateAux()

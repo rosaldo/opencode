@@ -18,6 +18,7 @@ import (
 	"github.com/opencode-ai/opencode/internal/lsp"
 	"github.com/opencode-ai/opencode/internal/message"
 	"github.com/opencode-ai/opencode/internal/permission"
+	"github.com/opencode-ai/opencode/internal/plugin"
 	"github.com/opencode-ai/opencode/internal/session"
 	"github.com/opencode-ai/opencode/internal/tui/theme"
 )
@@ -166,6 +167,11 @@ func (app *App) Shutdown() {
 
 	// Close every persistent MCP client (Spec 08 lifecycle).
 	agent.GetMCPManager().CloseAll()
+
+	// Stop plugin processes (Spec 10 lifecycle).
+	if mgr := plugin.GetManager(); mgr != nil {
+		mgr.Close()
+	}
 
 	// Perform additional cleanup for LSP clients
 	app.clientsMutex.RLock()
