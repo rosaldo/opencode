@@ -12,6 +12,10 @@ Base: fork Go `github.com/opencode-ai/opencode`, HEAD `73ee493` (= tag `v0.0.55`
 Hoje existem **4 agentes fixos** (`coder`, `summarizer`, `task`, `title`) — enum em
 `internal/config/config.go:39-44`.
 
+> **Onda 2** (fases 6–12, `Planejado`): paridade com o opencode TS `1.19.x` nas áreas que não são
+> agentes — providers, permissions, MCP, TUI, plugins, config e integração opencode.ai. Índice
+> em [06-12-roadmap.md](06-12-roadmap.md).
+
 ## Decisões de arquitetura (fixadas)
 
 1. **Registro vs. instanciação** (igual ao TS): carregar só *metadados* de todos os agentes;
@@ -37,6 +41,22 @@ Hoje existem **4 agentes fixos** (`coder`, `summarizer`, `task`, `title`) — en
 | 3 | [03-subagents.md](03-subagents.md) | Subagentes por nome na tool `agent` | Verificado | 01, 02 |
 | 4 | [04-tui-switcher.md](04-tui-switcher.md) | Switcher (Tab) + `@`-mention, `AgentManager` | Verificado (4a + 4b) | 01, 02, 03 |
 | 5 | [05-config-compat.md](05-config-compat.md) | Config JSON (`agent`, `defaultAgent`), schema, validação | Verificado | 01 |
+
+### Onda 2 — paridade com o opencode TS (1.19.x)
+
+Índice da onda: [06-12-roadmap.md](06-12-roadmap.md). Áreas que **não** são agentes.
+
+| # | Spec | Escopo | Status | Depende de |
+|---|------|--------|--------|-----------|
+| 6 | [06-providers.md](06-providers.md) | Providers: `baseURL`/`headers`, OpenAI-compat custom, catálogo dinâmico, `model`/`small_model` | Planejado | — |
+| 7 | [07-permissions.md](07-permissions.md) | Permissions: chave global, globs por recurso, `external_directory`, gating ampliado | Planejado | 11 |
+| 8 | [08-mcp.md](08-mcp.md) | MCP: HTTP/streamable, resources/prompts, OAuth, ciclo de vida, `enabled`/`timeout` | Planejado | 11 |
+| 9 | [09-tui.md](09-tui.md) | TUI: keybinds configuráveis, mouse/scroll, sessões (busca/rename/delete), paste de imagem | Planejado | 11, 07 |
+| 10 | [10-plugins.md](10-plugins.md) | Plugins: loader, protocolo (stdio), hooks, custom tools, UI | Planejado | 11, 08 |
+| 11 | [11-config.md](11-config.md) | Config: `instructions`/`keybinds`/`share`/`autoupdate`/`formatter`, schema gerador + teste de drift | Planejado | — |
+| 12 | [12-opencode-ai.md](12-opencode-ai.md) | share/serve/web, ACP; zen se viável | Planejado | 06, 11, 09 |
+
+Ordem sugerida: **06 → 11 → 07 → 08 → 09 → 10 → 12** (ver roadmap).
 
 Status possíveis: `Planejado` → `Em andamento` → `Implementado` → `Verificado`.
 
