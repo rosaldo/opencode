@@ -339,6 +339,9 @@ func renderToolParams(paramWidth int, toolCall message.ToolCall) string {
 		var params agent.AgentParams
 		json.Unmarshal([]byte(toolCall.Input), &params)
 		prompt := strings.ReplaceAll(params.Prompt, "\n", " ")
+		if subagent := strings.TrimSpace(params.Subagent); subagent != "" {
+			prompt = subagent + " — " + prompt
+		}
 		return renderParams(paramWidth, prompt)
 	case tools.BashToolName:
 		var params tools.BashParams
