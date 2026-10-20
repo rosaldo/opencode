@@ -77,7 +77,8 @@ subdivididas em 11b/11c.
 ## Mudanças (arquivos)
 
 - `internal/config/config.go`: localização/formato novos, `interpolate`, structs e chaves v2,
-  `default_agent` (alias de `defaultAgent`).
+  `DefaultAgent` (campo Go; tags `json/yaml: "default_agent"` — a chave v2; `defaultAgent` da
+  onda 1 é lido como deprecado, mesmo campo).
 - Novo `internal/config/jsonc.go` (ou dep) para JSONC.
 - `cmd/schema/main.go` + `opencode-schema.json`: gerador completo + teste de drift.
 - `internal/llm/prompt`: consumir `instructions` no contexto.

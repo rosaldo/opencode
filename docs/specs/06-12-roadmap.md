@@ -25,24 +25,28 @@ Diagnóstico (inventário no HEAD pós-fase-5, ver seção "Estado atual" de cad
 | Plugins | AUSENTE — nenhum mecanismo de plugin/hook | [10](10-plugins.md) |
 | Config | PARCIAL — formato/localização divergentes; faltam muitas chaves v2 e o gerador de schema está desatualizado | [11](11-config.md) |
 | opencode.ai | AUSENTE — sem share, serve/web, ACP | [12](12-opencode-ai.md) |
+| Agents v2 | PARCIAL — registry/lazy OK, mas JSON em `agent` (singular) e permissions em mapa; falta a fonte única `Source`, `agents` e `permissions` array | [13](13-agents-v2.md) |
 
 ## Ordem sugerida
 
 1. **11 Config v2** — base: `opencode.json(c)`, `$schema`, `{env:}`/`{file:}`, chaves v2, gerador
    de schema. Tudo depende disto.
-2. **06 Providers** — `providers.<p>.models/settings`, `model`/`small_model`, catálogo.
-3. **07 Permissions + Policies** — `permissions` array + `policies`.
-4. **08 MCP** — `mcp.servers` local/remote, HTTP, lifecycle.
-5. **09 TUI** — keybinds (`tui.json`/`cli.json`), mouse, sessões, paste.
-6. **10 Plugins** — loader, protocolo, hooks, tools.
-7. **12 opencode.ai** — serve/share/ACP (e web).
+2. **13 Agents v2** — consolida a costura JSON↔`agentdef` (fonte única `Source`), mapa `agents`,
+   `default_agent`, `system` inline e `permissions` array v2. Remove o "remendo" da fase 5.
+3. **06 Providers** — `providers.<p>.models/settings`, `model`/`small_model`, catálogo.
+4. **07 Permissions + Policies** — `permissions` array + `policies` (usa o tipo da Spec 13).
+5. **08 MCP** — `mcp.servers` local/remote, HTTP, lifecycle.
+6. **09 TUI** — keybinds (`tui.json`/`cli.json`), mouse, sessões, paste.
+7. **10 Plugins** — loader, protocolo, hooks, tools.
+8. **12 opencode.ai** — serve/share/ACP (e web).
 
 ## Convenções
 
 - Protocolo do `00-index.md`: uma fase por spec, `go build ./... && go test ./...` ao concluir,
   atualizar o **Status** só com testes verdes.
 - Manter a direção de dependências de `internal/agentdef`.
-- Back-compat obrigatória com o formato atual (`.opencode.json` + `agents`/`agent`).
+- Back-compat obrigatória com o formato atual (`.opencode.json`; `agent`/`defaultAgent` são lidos
+  como *deprecados* e alimentam a **mesma** fonte única — Spec 13 —, sem segundo caminho de código).
 
 ## Schema v2 — convenções (diferenças que importam)
 
@@ -51,8 +55,9 @@ Diagnóstico (inventário no HEAD pós-fase-5, ver seção "Estado atual" de cad
 | Arquivo | `.opencode.json` | `opencode.json` / `opencode.jsonc` (`$schema: https://opencode.ai/config.json`) |
 | Diretórios | `$HOME`, XDG/opencode | global `~/.config/opencode/`, projeto na raiz **e** `.opencode/`, sistema `/etc/opencode` |
 | Agente default | `defaultAgent` | `default_agent` |
-| Agentes | `agents` (builtins) + `agent` (custom) | `agents` (mapa único, builtin+custom) |
-| Permissões | `agent.<n>.permissions` (mapa) | `permissions` (array `{action,resource,effect}`) |
+| Agentes | `agents` (builtins) + `agent` (custom) | `agents` (mapa único, builtin+custom) — Spec 13 |
+| Prompt do agente | corpo do `.md` | `system` (inline no JSON) ou corpo do `.md` — Spec 13 |
+| Permissões | `agent.<n>.permissions` (mapa) | `permissions` (array `{action,resource,effect}`) — Spec 13 |
 | Políticas | — | `policies` (`provider.use`, `tool.use`, MCP/skill/plugin) |
 | Ação shell | `bash` | `shell` |
 | MCP | `mcpServers` | `mcp.servers` (`type: local\|remote`, `timeout`) |

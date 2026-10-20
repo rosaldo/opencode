@@ -4,9 +4,9 @@
 
 ## Objetivo
 
-Permitir carregar **500–1000 agentes instalados** (definidos em arquivos), seguindo o modelo
-do opencode em TypeScript, garantindo que **apenas o prompt do agente ativo seja enviado ao
-modelo** (nunca todos juntos).
+Permitir carregar **um número não limitado de agentes instalados** (definidos em arquivos e/ou no
+mapa `agents` do config), seguindo o modelo do opencode em TypeScript, garantindo que **apenas o
+prompt do agente ativo seja enviado ao modelo** (nunca todos juntos). Sem teto estrutural.
 
 Base: fork Go `github.com/opencode-ai/opencode`, HEAD `73ee493` (= tag `v0.0.55` + 4 commits).
 Hoje existem **4 agentes fixos** (`coder`, `summarizer`, `task`, `title`) — enum em
@@ -37,7 +37,7 @@ Hoje existem **4 agentes fixos** (`coder`, `summarizer`, `task`, `title`) — en
 
 | # | Spec | Escopo | Status | Depende de |
 |---|------|--------|--------|-----------|
-| 1 | [01-registry-loader.md](01-registry-loader.md) | Pacote `agentdef`, loader de `.md`, prompt lazy, integração no `createAgentProvider` | Verificado | — |
+| 1 | [01-registry-loader.md](01-registry-loader.md) | Núcleo: `agentdef` (`Definition`/`Registry`/`Source`), loader de `.md`, prompt lazy, integração no `createAgentProvider` | Verificado (revisado p/ fonte única) | — |
 | 2 | [02-tools-permissions.md](02-tools-permissions.md) | Tools e permissões por agente (`ToolsForDefinition`) | Verificado | 01 |
 | 3 | [03-subagents.md](03-subagents.md) | Subagentes por nome na tool `agent` | Verificado | 01, 02 |
 | 4 | [04-tui-switcher.md](04-tui-switcher.md) | Switcher (Tab) + `@`-mention, `AgentManager` | Verificado (4a + 4b) | 01, 02, 03 |
@@ -57,8 +57,11 @@ geração v2** (`https://opencode.ai/config.json`), não a 1.19.3.
 | 10 | [10-plugins.md](10-plugins.md) | `plugins`: loader, protocolo (stdio), hooks, custom tools, UI | Planejado | 11, 08 |
 | 11 | [11-config.md](11-config.md) | **Config v2 (base)**: `opencode.json(c)`, `$schema`, `{env:}`/`{file:}`, chaves v2, schema gerador | Planejado | — |
 | 12 | [12-opencode-ai.md](12-opencode-ai.md) | serve/share/web, ACP | Planejado | 06, 11, 09 |
+| 13 | [13-agents-v2.md](13-agents-v2.md) | **Agents v2**: fonte única (`Source`), mapa `agents`, `default_agent`, `system` inline, permissões array v2 | Planejado | 01, 11 |
 
-Ordem sugerida: **11 → 06 → 07 → 08 → 09 → 10 → 12** (ver roadmap).
+Ordem sugerida: **11 → 13 → 06 → 07 → 08 → 09 → 10 → 12** (ver roadmap). A 13 consolida a
+costura JSON↔agentdef deixada pela fase 5 (elimina a duplicação `Options.GlobalDefinitions/
+ProjectDefinitions`) e migra `permissions` para o array v2.
 
 Status possíveis: `Planejado` → `Em andamento` → `Implementado` → `Verificado`.
 
