@@ -10,8 +10,8 @@ modelos conhecidos e seleção por topo `model`/`small_model`.
 
 ## Estado atual (pós-fase 5)
 
-- 11 providers + mock por `switch` em `internal/llm/provider/provider.go:86` (`anthropic, azure,
-  copilot, gemini, groq, local, bedrock, openai, openrouter, vertexai, xai`).
+- 12 providers + mock por `switch` em `internal/llm/provider/provider.go:86` (`anthropic, azure,
+  copilot, gemini, groq, local, bedrock, openai, opencode (Zen), openrouter, vertexai, xai`).
 - `SupportedModels` estático (`internal/llm/models/models.go:50`); `ResolveModelID`
   (`internal/llm/models/resolve.go:8`).
 - `Provider` na config só tem `apiKey`/`disabled`; baseURL/headers **hard-coded**

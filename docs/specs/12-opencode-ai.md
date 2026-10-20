@@ -90,9 +90,15 @@ pontos de integração com a nuvem (`zen`/modelos hospedados).
   `/api/events` (SSE). Quando há token configurado, lê `?token=` da própria URL e o repassa nas
   chamadas; `opencode serve` imprime a URL do web UI. Testes: `internal/server/server_test.go`
   (`TestUIPageServed`).
-- **12d zen/modelos hospedados** — **fora de escopo por ora** (documentado): `zen` depende de API
-  oficial estável inexistente. O fork segue com providers via spec 06 (incl. endpoints
-  OpenAI-compatíveis apontando para serviços hospedados).
+- **12d zen/modelos hospedados** — Verificado. Provider nativo **`opencode`** (`internal/llm/models/opencode.go`)
+  apontando para o gateway OpenAI-compatível `https://opencode.ai/inference/openai/v1`
+  (`internal/llm/provider/provider.go`), API key via `OPENCODE_API_KEY` (ou
+  `providers.opencode.settings.apiKey`). Catálogo curado dos modelos publicados em
+  `opencode.ai/docs/zen` (GPT‑5.x, Claude via gateway, GLM, Kimi, Qwen, DeepSeek, MiniMax,
+  Grok, Mistral e os *free*). Seleção por `opencode/<model-id>` (ex.: `opencode/gpt-5.5`),
+  igual ao TS, resolvida por `ResolveModelID`. Usuários podem declarar/sobrescrever modelos
+  em `providers.opencode.models` (Spec 06b). Testes:
+  `internal/llm/provider/opencode_test.go` (base URL do gateway e resolução `opencode/<id>`).
 - Sem config de share, comportamento inalterado (só local) — critério 5 atendido.
 
 ## Riscos

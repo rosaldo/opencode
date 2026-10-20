@@ -1154,6 +1154,8 @@ func getProviderAPIKey(provider models.ModelProvider) string {
 		return os.Getenv("AZURE_OPENAI_API_KEY")
 	case models.ProviderOpenRouter:
 		return os.Getenv("OPENROUTER_API_KEY")
+	case models.ProviderOpencode:
+		return os.Getenv("OPENCODE_API_KEY")
 	case models.ProviderBedrock:
 		if hasAWSCredentials() {
 			return "aws-credentials-available"
@@ -1183,6 +1185,14 @@ func setDefaultModelForAgent(agent string) bool {
 		}
 
 		setModel(models.CopilotGPT4o, maxTokens, "")
+		return true
+	}
+	if apiKey := os.Getenv("OPENCODE_API_KEY"); apiKey != "" {
+		maxTokens := int64(5000)
+		if agent == string(AgentTitle) {
+			maxTokens = 80
+		}
+		setModel(models.OpencodeGLM53, maxTokens, "")
 		return true
 	}
 	// Check providers in order of preference
