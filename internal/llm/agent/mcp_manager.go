@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"net"
 	"sync"
 	"time"
 
@@ -28,6 +29,11 @@ type mcpServerState struct {
 	// persistent is false when the transport cannot be reused and a fresh
 	// client is created per call.
 	persistent bool
+	// oauthListener is the reserved loopback listener for the OAuth callback
+	// flow, kept open between the client build and the authorization redirect
+	// so the redirect URI matches (Spec 08b).
+	oauthListener net.Listener
+	oauthRedirect string
 }
 
 // MCPManager owns the MCP clients: it creates them lazily, keeps them alive and
@@ -81,9 +87,29 @@ func timeoutFor(cfg *config.Config, srv config.MCPServer) time.Duration {
 	return defaultMCPTimeout
 }
 
+// oauthConfigFor builds the mcp-go OAuth configuration for a server, reserving a
+// loopback callback listener so the redirect URI is known before the flow
+// starts. The returned listener must be closed by the caller once done.
+func oauthConfigFor(server string, o *config.MCPOAuth) (transport.OAuthConfig, net.Listener, string, error) {
+	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", o.CallbackPort))
+	if err != nil {
+		return transport.OAuthConfig{}, nil, "", fmt.Errorf("oauth callback listener: %w", err)
+	}
+	port := ln.Addr().(*net.TCPAddr).Port
+	redirect := fmt.Sprintf("http://localhost:%d/callback", port)
+	return transport.OAuthConfig{
+		ClientID:     o.ClientID,
+		ClientSecret: o.ClientSecret,
+		RedirectURI:  redirect,
+		Scopes:       o.Scopes,
+		TokenStore:   oauthTokenStore(server, o),
+		PKCEEnabled:  pkceEnabled(o),
+	}, ln, redirect, nil
+}
+
 // newClient builds a client for the server's transport and initializes it. The
 // bool result is false when the transport is per-call (non-persistent).
-func (m *MCPManager) newClient(ctx context.Context, srv config.MCPServer) (MCPClient, bool, error) {
+func (m *MCPManager) newClient(ctx context.Context, name string, srv config.MCPServer) (MCPClient, bool, error) {
 	initRequest := mcp.InitializeRequest{}
 	initRequest.Params.ProtocolVersion = mcp.LATEST_PROTOCOL_VERSION
 	initRequest.Params.ClientInfo = mcp.Implementation{
@@ -91,9 +117,23 @@ func (m *MCPManager) newClient(ctx context.Context, srv config.MCPServer) (MCPCl
 		Version: version.Version,
 	}
 
+	var oauthCfg *transport.OAuthConfig
+	if srv.OAuth != nil {
+		cfg, ln, redirect, err := oauthConfigFor(name, srv.OAuth)
+		if err != nil {
+			return nil, true, err
+		}
+		oauthCfg = &cfg
+		m.setOAuthListener(name, ln, redirect)
+	}
+
+	var (
+		c   *client.Client
+		err error
+	)
 	switch srv.Type {
 	case config.MCPStdio:
-		c, err := client.NewStdioMCPClient(srv.Command, srv.Env, srv.Args...)
+		c, err = client.NewStdioMCPClient(srv.Command, srv.Env, srv.Args...)
 		if err != nil {
 			return nil, true, err
 		}
@@ -103,35 +143,97 @@ func (m *MCPManager) newClient(ctx context.Context, srv config.MCPServer) (MCPCl
 		}
 		return c, true, nil
 	case config.MCPSse:
-		c, err := client.NewSSEMCPClient(srv.URL, client.WithHeaders(srv.Headers))
+		opts := []transport.ClientOption{transport.WithHeaders(srv.Headers)}
+		if oauthCfg != nil {
+			opts = append(opts, transport.WithOAuth(*oauthCfg))
+		}
+		c, err = client.NewSSEMCPClient(srv.URL, opts...)
 		if err != nil {
 			return nil, true, err
 		}
 		if _, err := c.Initialize(ctx, initRequest); err != nil {
 			c.Close()
+			if client.IsOAuthAuthorizationRequiredError(err) && srv.OAuth != nil {
+				if aerr := m.authorize(ctx, name, srv.OAuth, client.GetOAuthHandler(err)); aerr != nil {
+					return nil, true, aerr
+				}
+				return m.newClient(ctx, name, srv)
+			}
 			return nil, true, err
 		}
 		return c, true, nil
 	case config.MCPHTTP, config.MCPRemote:
-		c, err := client.NewStreamableHttpClient(srv.URL,
+		opts := []transport.StreamableHTTPCOption{
 			transport.WithHTTPHeaders(srv.Headers),
 			transport.WithHTTPTimeout(m.timeoutFor(srv)),
-		)
+		}
+		if oauthCfg != nil {
+			opts = append(opts, transport.WithHTTPOAuth(*oauthCfg))
+		}
+		c, err = client.NewStreamableHttpClient(srv.URL, opts...)
 		if err != nil {
 			return nil, true, err
 		}
 		if err := c.Start(ctx); err != nil {
 			c.Close()
+			if client.IsOAuthAuthorizationRequiredError(err) && srv.OAuth != nil {
+				if aerr := m.authorize(ctx, name, srv.OAuth, client.GetOAuthHandler(err)); aerr != nil {
+					return nil, true, aerr
+				}
+				return m.newClient(ctx, name, srv)
+			}
 			return nil, true, err
 		}
 		if _, err := c.Initialize(ctx, initRequest); err != nil {
 			c.Close()
+			// An OAuth-required error is recoverable: authorize and retry once.
+			if client.IsOAuthAuthorizationRequiredError(err) && srv.OAuth != nil {
+				if aerr := m.authorize(ctx, name, srv.OAuth, client.GetOAuthHandler(err)); aerr != nil {
+					return nil, true, aerr
+				}
+				return m.newClient(ctx, name, srv)
+			}
 			return nil, true, err
 		}
 		return c, true, nil
 	default:
 		return nil, false, fmt.Errorf("invalid mcp type %q", srv.Type)
 	}
+}
+
+// setOAuthListener records the reserved callback listener for a server so the
+// flow can serve the redirect on the same port (Spec 08b).
+func (m *MCPManager) setOAuthListener(name string, ln net.Listener, redirect string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if st, ok := m.servers[name]; ok {
+		if st.oauthListener != nil {
+			st.oauthListener.Close()
+		}
+		st.oauthListener = ln
+		st.oauthRedirect = redirect
+	}
+}
+
+// authorize runs the interactive OAuth flow for a handler, using the reserved
+// callback listener when present.
+func (m *MCPManager) authorize(ctx context.Context, name string, o *config.MCPOAuth, handler *transport.OAuthHandler) error {
+	if handler == nil {
+		return fmt.Errorf("oauth handler unavailable")
+	}
+	m.mu.Lock()
+	var ln net.Listener
+	if st, ok := m.servers[name]; ok {
+		ln = st.oauthListener
+	}
+	m.mu.Unlock()
+
+	actx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer cancel()
+	if ln != nil {
+		return runOAuthFlowWithListener(actx, name, o, handler, ln)
+	}
+	return runOAuthFlow(actx, name, o, handler)
 }
 
 func (m *MCPManager) timeoutFor(srv config.MCPServer) time.Duration {
@@ -164,7 +266,7 @@ func (m *MCPManager) Client(ctx context.Context, name string) (MCPClient, config
 
 	ctx, cancel := context.WithTimeout(ctx, m.timeoutFor(srv))
 	defer cancel()
-	c, persistent, err := m.newClient(ctx, srv)
+	c, persistent, err := m.newClient(ctx, name, srv)
 	if err != nil {
 		return nil, srv, err
 	}
@@ -190,6 +292,11 @@ func (m *MCPManager) Restart(name string) {
 	}
 	state.client = nil
 	state.persistent = false
+	if state.oauthListener != nil {
+		state.oauthListener.Close()
+		state.oauthListener = nil
+		state.oauthRedirect = ""
+	}
 }
 
 // CloseAll closes every persistent client. It is safe to call multiple times.
@@ -202,6 +309,10 @@ func (m *MCPManager) CloseAll() {
 				logging.Warn("error closing mcp client", "server", name, "error", err)
 			}
 			state.client = nil
+		}
+		if state.oauthListener != nil {
+			state.oauthListener.Close()
+			state.oauthListener = nil
 		}
 	}
 }

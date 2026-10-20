@@ -797,6 +797,34 @@
                 },
                 "type": "object"
               },
+              "oauth": {
+                "description": "OAuth 2.0 authorization-code settings for remote servers (Spec 08b)",
+                "properties": {
+                  "callbackPort": {
+                    "description": "Local callback port; 0 picks a free port",
+                    "type": "integer"
+                  },
+                  "clientId": {
+                    "description": "Pre-registered OAuth client ID; empty triggers dynamic registration",
+                    "type": "string"
+                  },
+                  "clientSecret": {
+                    "description": "OAuth client secret (confidential clients)",
+                    "type": "string"
+                  },
+                  "pkce": {
+                    "description": "Use PKCE (default true)",
+                    "type": "boolean"
+                  },
+                  "scopes": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "type": "object"
+              },
               "timeout": {
                 "description": "Per-server timeout in milliseconds",
                 "type": "integer"
@@ -859,6 +887,30 @@
               "type": "string"
             },
             "description": "HTTP headers for SSE type MCP servers",
+            "type": "object"
+          },
+          "oauth": {
+            "description": "OAuth 2.0 authorization-code settings for remote servers (Spec 08b)",
+            "properties": {
+              "callbackPort": {
+                "type": "integer"
+              },
+              "clientId": {
+                "type": "string"
+              },
+              "clientSecret": {
+                "type": "string"
+              },
+              "pkce": {
+                "type": "boolean"
+              },
+              "scopes": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
             "type": "object"
           },
           "timeout": {

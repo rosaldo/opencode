@@ -25,6 +25,7 @@ type mcpServerRaw struct {
 	Headers map[string]string `json:"headers,omitempty"`
 	Enabled *bool             `json:"enabled,omitempty"`
 	Timeout int               `json:"timeout,omitempty"`
+	OAuth   *MCPOAuth         `json:"oauth,omitempty"`
 }
 
 // applyMCPConfig parses the v2 "mcp" block from the raw merged map and merges it
@@ -71,6 +72,7 @@ func (s mcpServerRaw) toMCPServer(globalTimeout int) MCPServer {
 		Headers: s.Headers,
 		Enabled: s.Enabled,
 		Timeout: s.Timeout,
+		OAuth:   s.OAuth,
 	}
 
 	if len(s.Command) > 0 {

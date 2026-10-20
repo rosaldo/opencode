@@ -43,6 +43,23 @@ type MCPServer struct {
 	Enabled *bool `json:"enabled,omitempty"`
 	// Timeout in milliseconds, overriding the global mcp.timeout.
 	Timeout int `json:"timeout,omitempty"`
+	// OAuth enables the OAuth 2.0 authorization-code flow for remote servers
+	// (Spec 08b). When nil the server is used without OAuth.
+	OAuth *MCPOAuth `json:"oauth,omitempty"`
+}
+
+// MCPOAuth holds the OAuth settings for a remote MCP server (Spec 08b).
+type MCPOAuth struct {
+	// ClientID/ClientSecret identify a pre-registered client. When ClientID is
+	// empty the client attempts dynamic client registration.
+	ClientID     string `json:"clientId,omitempty"`
+	ClientSecret string `json:"clientSecret,omitempty"`
+	// Scopes requested during authorization.
+	Scopes []string `json:"scopes,omitempty"`
+	// CallbackPort is the local port for the redirect URI; 0 picks a free port.
+	CallbackPort int `json:"callbackPort,omitempty"`
+	// PKCE is the public-client proof key; nil means enabled (recommended).
+	PKCE *bool `json:"pkce,omitempty"`
 }
 
 // IsEnabled reports whether the server should be started.

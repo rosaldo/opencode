@@ -180,12 +180,34 @@ func generateSchema() map[string]any {
 					"type":        "integer",
 					"description": "Per-server timeout in milliseconds",
 				},
+				"oauth": map[string]any{
+					"type":        "object",
+					"description": "OAuth 2.0 authorization-code settings for remote servers (Spec 08b)",
+					"properties": map[string]any{
+						"clientId":     map[string]any{"type": "string"},
+						"clientSecret": map[string]any{"type": "string"},
+						"scopes":       map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+						"callbackPort": map[string]any{"type": "integer"},
+						"pkce":         map[string]any{"type": "boolean"},
+					},
+				},
 			},
 			"required": []string{"command"},
 		},
 	}
 
 	// mcp: v2 block with local/remote servers (Spec 08).
+	oauthSchema := map[string]any{
+		"type":        "object",
+		"description": "OAuth 2.0 authorization-code settings for remote servers (Spec 08b)",
+		"properties": map[string]any{
+			"clientId":     map[string]any{"type": "string", "description": "Pre-registered OAuth client ID; empty triggers dynamic registration"},
+			"clientSecret": map[string]any{"type": "string", "description": "OAuth client secret (confidential clients)"},
+			"scopes":       map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+			"callbackPort": map[string]any{"type": "integer", "description": "Local callback port; 0 picks a free port"},
+			"pkce":         map[string]any{"type": "boolean", "description": "Use PKCE (default true)"},
+		},
+	}
 	mcpServerSchema := map[string]any{
 		"type":        "object",
 		"description": "v2 MCP server configuration",
@@ -208,6 +230,7 @@ func generateSchema() map[string]any {
 			"headers": map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}},
 			"enabled": map[string]any{"type": "boolean", "description": "Whether the server is started (default true)"},
 			"timeout": map[string]any{"type": "integer", "description": "Per-server timeout in milliseconds"},
+			"oauth":   oauthSchema,
 		},
 	}
 	schema["properties"].(map[string]any)["mcp"] = map[string]any{

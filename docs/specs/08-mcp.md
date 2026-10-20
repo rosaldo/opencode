@@ -97,9 +97,21 @@ HTTP/streamable além de stdio/sse, uso de **resources**/**prompts**, OAuth para
   (`internal/app/app.go`). Servidores `enabled:false` não são gerenciados nem expõem tools.
 - **Resources/prompts** (critério 7, superfície mínima): `ListMCPResources`/`ReadMCPResource`,
   `ListMCPPrompts`/`GetMCPPrompt`. Integração com o loop do agente/slash-commands fica para a 09.
-- `cel`/OAuth dos remotos **não** implementado nesta fase (fica em 08b): hoje o `mcp-go` aceita
-  `WithHTTPOAuth`, mas o fluxo de callback/token-store não foi ligado.
-- `opencode-schema.json`/`cmd/schema` emitem `mcp` + `enabled`/`timeout`.
+- `cel` não implementado (fora de escopo v2).
+- **OAuth (08b)** — Verificado. `MCPServer.OAuth *MCPOAuth` (`clientId`, `clientSecret`, `scopes`,
+  `callbackPort`, `pkce` default true); parse em `internal/config/mcp.go` (bloco `mcp.servers` e
+  legado `mcpServers`). `internal/llm/agent/mcp_oauth.go`: `fileTokenStore` persiste tokens em
+  `<data.directory>/mcp-oauth/<server>.json` (fallback `os.TempDir()`), implementando
+  `transport.TokenStore`; fluxo authorization-code — dynamic client registration quando não há
+  `clientId`, PKCE (S256), listener de callback loopback reservado (o `RedirectURI` bate com a
+  porta), abre o navegador, aguarda o redirect `/callback` e troca o código via
+  `ProcessAuthorizationResponse`. `MCPManager` passa `transport.WithHTTPOAuth`/`WithOAuth` quando há
+  `OAuth` e, se `Start`/`Initialize` retornar `OAuthAuthorizationRequiredError`, autoriza e refaz a
+  operação uma vez; listeners reservados são fechados em `Restart`/`CloseAll`. `opencode-schema.json`
+  emite `oauth` (v2 e legado). Testes: `internal/config/mcp_test.go` (parse oauth),
+  `internal/llm/agent/mcp_oauth_test.go` (token store round-trip; fluxo completo contra servidor
+  OAuth fake com metadata/register/authorize/token e navegador substituído por HTTP GET).
+- `opencode-schema.json`/`cmd/schema` emitem `mcp` + `enabled`/`timeout`/`oauth`.
 - Testes: `internal/config/mcp_test.go` (parse v2, legado, precedência) e
   `internal/llm/agent/mcp_test.go` (servidor MCP HTTP fake: tools/resources/prompts + disabled).
 

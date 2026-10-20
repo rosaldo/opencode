@@ -56,6 +56,39 @@ func TestMCPBlockV2Parse(t *testing.T) {
 	}
 }
 
+func TestMCPOAuthParse(t *testing.T) {
+	home := t.TempDir()
+	project := t.TempDir()
+	writeConfigFile(t, filepath.Join(project, "opencode.json"), `{
+		"mcp": {
+			"servers": {
+				"remote": {"type": "remote", "url": "https://r.example.com/mcp",
+					"oauth": {"clientId": "abc", "clientSecret": "shh", "scopes": ["mcp.read"], "callbackPort": 8085, "pkce": false}}
+			}
+		}
+	}`)
+
+	loaded := loadForTest(t, home, project)
+	defer resetLoad(t)
+
+	s := loaded.MCPServers["remote"]
+	if s.OAuth == nil {
+		t.Fatal("expected oauth config")
+	}
+	if s.OAuth.ClientID != "abc" || s.OAuth.ClientSecret != "shh" {
+		t.Fatalf("oauth = %+v", s.OAuth)
+	}
+	if len(s.OAuth.Scopes) != 1 || s.OAuth.Scopes[0] != "mcp.read" {
+		t.Fatalf("oauth scopes = %v", s.OAuth.Scopes)
+	}
+	if s.OAuth.CallbackPort != 8085 {
+		t.Fatalf("callback port = %d", s.OAuth.CallbackPort)
+	}
+	if s.OAuth.PKCE == nil || *s.OAuth.PKCE {
+		t.Fatalf("pkce should be explicitly false")
+	}
+}
+
 func TestMCPServersLegacyStillWorks(t *testing.T) {
 	home := t.TempDir()
 	project := t.TempDir()
