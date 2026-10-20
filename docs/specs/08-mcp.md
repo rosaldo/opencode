@@ -84,6 +84,25 @@ HTTP/streamable além de stdio/sse, uso de **resources**/**prompts**, OAuth para
 - `internal/config`: parse de `mcp` e compat `mcpServers`.
 - Manager: enabled/disabled, restart.
 
+## Status
+
+- **Verificado**: `mcp` (v2) decodificado do mapa bruto (`internal/config/mcp.go`): `mcp.timeout`
+  global + `mcp.servers` com `type: local|remote|http`, `command` string ou array, `enabled` e
+  `timeout` por-server. `local`→`stdio`, `remote`→`http`. Compat: `mcpServers` legado mantido e
+  vence em caso de nome repetido. `MCPServer.IsEnabled()`.
+- **Transporte HTTP/streamable**: `mcp-go` atualizado para **v0.37.0** (client `NewStreamableHttpClient`
+  + test server); SSE/stdio mantidos.
+- **Ciclo de vida** (`internal/llm/agent/mcp_manager.go`): `MCPManager` com cliente **persistente**
+  por servidor (não mais por chamada), criação lazy, `Restart` em falha e `CloseAll` no shutdown
+  (`internal/app/app.go`). Servidores `enabled:false` não são gerenciados nem expõem tools.
+- **Resources/prompts** (critério 7, superfície mínima): `ListMCPResources`/`ReadMCPResource`,
+  `ListMCPPrompts`/`GetMCPPrompt`. Integração com o loop do agente/slash-commands fica para a 09.
+- `cel`/OAuth dos remotos **não** implementado nesta fase (fica em 08b): hoje o `mcp-go` aceita
+  `WithHTTPOAuth`, mas o fluxo de callback/token-store não foi ligado.
+- `opencode-schema.json`/`cmd/schema` emitem `mcp` + `enabled`/`timeout`.
+- Testes: `internal/config/mcp_test.go` (parse v2, legado, precedência) e
+  `internal/llm/agent/mcp_test.go` (servidor MCP HTTP fake: tools/resources/prompts + disabled).
+
 ## Riscos
 
 - OAuth adiciona complexidade e superfície de segurança — limitar a servers explícitos.

@@ -754,6 +754,80 @@
       "description": "Language Server Protocol configurations",
       "type": "object"
     },
+    "mcp": {
+      "description": "Model Control Protocol servers (v2)",
+      "properties": {
+        "servers": {
+          "additionalProperties": {
+            "description": "v2 MCP server configuration",
+            "properties": {
+              "args": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "command": {
+                "description": "Command (string or array); local servers only",
+                "oneOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                ]
+              },
+              "enabled": {
+                "description": "Whether the server is started (default true)",
+                "type": "boolean"
+              },
+              "env": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "headers": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              "timeout": {
+                "description": "Per-server timeout in milliseconds",
+                "type": "integer"
+              },
+              "type": {
+                "description": "Server type",
+                "enum": [
+                  "local",
+                  "remote",
+                  "stdio",
+                  "sse",
+                  "http"
+                ],
+                "type": "string"
+              },
+              "url": {
+                "description": "URL for remote/SSE servers",
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "type": "object"
+        },
+        "timeout": {
+          "description": "Default timeout for MCP servers in milliseconds",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
     "mcpServers": {
       "additionalProperties": {
         "description": "MCP server configuration",
@@ -769,6 +843,10 @@
             "description": "Command to execute for the MCP server",
             "type": "string"
           },
+          "enabled": {
+            "description": "Whether the server is started (default true)",
+            "type": "boolean"
+          },
           "env": {
             "description": "Environment variables for the MCP server",
             "items": {
@@ -782,6 +860,10 @@
             },
             "description": "HTTP headers for SSE type MCP servers",
             "type": "object"
+          },
+          "timeout": {
+            "description": "Per-server timeout in milliseconds",
+            "type": "integer"
           },
           "type": {
             "default": "stdio",

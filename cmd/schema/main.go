@@ -165,8 +165,53 @@ func generateSchema() map[string]any {
 						"type": "string",
 					},
 				},
+				"enabled": map[string]any{
+					"type":        "boolean",
+					"description": "Whether the server is started (default true)",
+				},
+				"timeout": map[string]any{
+					"type":        "integer",
+					"description": "Per-server timeout in milliseconds",
+				},
 			},
 			"required": []string{"command"},
+		},
+	}
+
+	// mcp: v2 block with local/remote servers (Spec 08).
+	mcpServerSchema := map[string]any{
+		"type":        "object",
+		"description": "v2 MCP server configuration",
+		"properties": map[string]any{
+			"type": map[string]any{
+				"type":        "string",
+				"description": "Server type",
+				"enum":        []string{"local", "remote", "stdio", "sse", "http"},
+			},
+			"command": map[string]any{
+				"description": "Command (string or array); local servers only",
+				"oneOf": []any{
+					map[string]any{"type": "string"},
+					map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+				},
+			},
+			"args":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+			"env":     map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+			"url":     map[string]any{"type": "string", "description": "URL for remote/SSE servers"},
+			"headers": map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}},
+			"enabled": map[string]any{"type": "boolean", "description": "Whether the server is started (default true)"},
+			"timeout": map[string]any{"type": "integer", "description": "Per-server timeout in milliseconds"},
+		},
+	}
+	schema["properties"].(map[string]any)["mcp"] = map[string]any{
+		"type":        "object",
+		"description": "Model Control Protocol servers (v2)",
+		"properties": map[string]any{
+			"timeout": map[string]any{"type": "integer", "description": "Default timeout for MCP servers in milliseconds"},
+			"servers": map[string]any{
+				"type":                 "object",
+				"additionalProperties": mcpServerSchema,
+			},
 		},
 	}
 

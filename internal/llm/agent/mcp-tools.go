@@ -9,9 +9,7 @@ import (
 	"github.com/opencode-ai/opencode/internal/llm/tools"
 	"github.com/opencode-ai/opencode/internal/logging"
 	"github.com/opencode-ai/opencode/internal/permission"
-	"github.com/opencode-ai/opencode/internal/version"
 
-	"github.com/mark3labs/mcp-go/client"
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
@@ -29,6 +27,10 @@ type MCPClient interface {
 	) (*mcp.InitializeResult, error)
 	ListTools(ctx context.Context, request mcp.ListToolsRequest) (*mcp.ListToolsResult, error)
 	CallTool(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error)
+	ListResources(ctx context.Context, request mcp.ListResourcesRequest) (*mcp.ListResourcesResult, error)
+	ReadResource(ctx context.Context, request mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error)
+	ListPrompts(ctx context.Context, request mcp.ListPromptsRequest) (*mcp.ListPromptsResult, error)
+	GetPrompt(ctx context.Context, request mcp.GetPromptRequest) (*mcp.GetPromptResult, error)
 	Close() error
 }
 
@@ -45,24 +47,12 @@ func (b *mcpTool) Info() tools.ToolInfo {
 	}
 }
 
-func runTool(ctx context.Context, c MCPClient, toolName string, input string) (tools.ToolResponse, error) {
-	defer c.Close()
-	initRequest := mcp.InitializeRequest{}
-	initRequest.Params.ProtocolVersion = mcp.LATEST_PROTOCOL_VERSION
-	initRequest.Params.ClientInfo = mcp.Implementation{
-		Name:    "OpenCode",
-		Version: version.Version,
-	}
-
-	_, err := c.Initialize(ctx, initRequest)
-	if err != nil {
-		return tools.NewTextErrorResponse(err.Error()), nil
-	}
-
+// callTool invokes a tool on an already-initialized client.
+func callTool(ctx context.Context, c MCPClient, toolName string, input string) (tools.ToolResponse, error) {
 	toolRequest := mcp.CallToolRequest{}
 	toolRequest.Params.Name = toolName
 	var args map[string]any
-	if err = json.Unmarshal([]byte(input), &args); err != nil {
+	if err := json.Unmarshal([]byte(input), &args); err != nil {
 		return tools.NewTextErrorResponse(fmt.Sprintf("error parsing parameters: %s", err)), nil
 	}
 	toolRequest.Params.Arguments = args
@@ -103,29 +93,24 @@ func (b *mcpTool) Run(ctx context.Context, params tools.ToolCall) (tools.ToolRes
 		return tools.NewTextErrorResponse("permission denied"), nil
 	}
 
-	switch b.mcpConfig.Type {
-	case config.MCPStdio:
-		c, err := client.NewStdioMCPClient(
-			b.mcpConfig.Command,
-			b.mcpConfig.Env,
-			b.mcpConfig.Args...,
-		)
-		if err != nil {
-			return tools.NewTextErrorResponse(err.Error()), nil
-		}
-		return runTool(ctx, c, b.tool.Name, params.Input)
-	case config.MCPSse:
-		c, err := client.NewSSEMCPClient(
-			b.mcpConfig.URL,
-			client.WithHeaders(b.mcpConfig.Headers),
-		)
-		if err != nil {
-			return tools.NewTextErrorResponse(err.Error()), nil
-		}
-		return runTool(ctx, c, b.tool.Name, params.Input)
+	mgr := GetMCPManager()
+	c, _, err := mgr.Client(ctx, b.mcpName)
+	if err != nil {
+		return tools.NewTextErrorResponse(err.Error()), nil
 	}
-
-	return tools.NewTextErrorResponse("invalid mcp type"), nil
+	resp, err := callTool(ctx, c, b.tool.Name, params.Input)
+	if err != nil {
+		// A dead client is restarted once so a crashed server recovers without
+		// taking the app down (Spec 08).
+		mgr.Restart(b.mcpName)
+		if c, _, err2 := mgr.Client(ctx, b.mcpName); err2 == nil {
+			if r2, e2 := callTool(ctx, c, b.tool.Name, params.Input); e2 == nil {
+				return r2, nil
+			}
+		}
+		return tools.NewTextErrorResponse(err.Error()), nil
+	}
+	return resp, nil
 }
 
 func NewMcpTool(name string, tool mcp.Tool, permissions permission.Service, mcpConfig config.MCPServer) tools.BaseTool {
@@ -148,66 +133,31 @@ type mcpToolDef struct {
 
 var mcpToolDefs []mcpToolDef
 
+// discoverTools lists the tools of an already-initialized client.
 func discoverTools(ctx context.Context, name string, m config.MCPServer, c MCPClient) []mcpToolDef {
 	var defs []mcpToolDef
-	initRequest := mcp.InitializeRequest{}
-	initRequest.Params.ProtocolVersion = mcp.LATEST_PROTOCOL_VERSION
-	initRequest.Params.ClientInfo = mcp.Implementation{
-		Name:    "OpenCode",
-		Version: version.Version,
-	}
-
-	_, err := c.Initialize(ctx, initRequest)
+	result, err := c.ListTools(ctx, mcp.ListToolsRequest{})
 	if err != nil {
-		logging.Error("error initializing mcp client", "error", err)
-		return defs
-	}
-	toolsRequest := mcp.ListToolsRequest{}
-	result, err := c.ListTools(ctx, toolsRequest)
-	if err != nil {
-		logging.Error("error listing tools", "error", err)
+		logging.Error("error listing tools", "server", name, "error", err)
 		return defs
 	}
 	for _, t := range result.Tools {
 		defs = append(defs, mcpToolDef{mcpName: name, tool: t, mcpConfig: m})
 	}
-	defer c.Close()
 	return defs
 }
 
 func discoverMcpTools(ctx context.Context) []mcpToolDef {
 	var defs []mcpToolDef
-	cfg := config.Get()
-	if cfg == nil {
-		return defs
-	}
-	for name, m := range cfg.MCPServers {
-		switch m.Type {
-		case config.MCPStdio:
-			c, err := client.NewStdioMCPClient(
-				m.Command,
-				m.Env,
-				m.Args...,
-			)
-			if err != nil {
-				logging.Error("error creating mcp client", "error", err)
-				continue
-			}
-
-			defs = append(defs, discoverTools(ctx, name, m, c)...)
-		case config.MCPSse:
-			c, err := client.NewSSEMCPClient(
-				m.URL,
-				client.WithHeaders(m.Headers),
-			)
-			if err != nil {
-				logging.Error("error creating mcp client", "error", err)
-				continue
-			}
-			defs = append(defs, discoverTools(ctx, name, m, c)...)
+	mgr := GetMCPManager()
+	for _, name := range mgr.Servers() {
+		c, srv, err := mgr.Client(ctx, name)
+		if err != nil {
+			logging.Error("error creating mcp client", "server", name, "error", err)
+			continue
 		}
+		defs = append(defs, discoverTools(ctx, name, srv, c)...)
 	}
-
 	return defs
 }
 
@@ -220,4 +170,116 @@ func GetMcpTools(ctx context.Context, permissions permission.Service) []tools.Ba
 		mcpTools = append(mcpTools, NewMcpTool(def.mcpName, def.tool, permissions, def.mcpConfig))
 	}
 	return mcpTools
+}
+
+// MCPResourceInfo is a resource exposed by an MCP server (Spec 08).
+type MCPResourceInfo struct {
+	Server      string
+	URI         string
+	Name        string
+	Description string
+	MimeType    string
+}
+
+// MCPPromptInfo is a prompt exposed by an MCP server (Spec 08).
+type MCPPromptInfo struct {
+	Server      string
+	Name        string
+	Description string
+	Arguments   []mcp.PromptArgument
+}
+
+// ListMCPResources lists the resources of every enabled server. Failures are
+// logged and skipped so one bad server cannot break the listing. This is the
+// minimal surface for this phase; wiring into the agent loop is Spec 09.
+func ListMCPResources(ctx context.Context) []MCPResourceInfo {
+	var out []MCPResourceInfo
+	mgr := GetMCPManager()
+	for _, name := range mgr.Servers() {
+		c, _, err := mgr.Client(ctx, name)
+		if err != nil {
+			logging.Error("error creating mcp client", "server", name, "error", err)
+			continue
+		}
+		res, err := c.ListResources(ctx, mcp.ListResourcesRequest{})
+		if err != nil {
+			logging.Warn("error listing mcp resources", "server", name, "error", err)
+			continue
+		}
+		for _, r := range res.Resources {
+			out = append(out, MCPResourceInfo{
+				Server:      name,
+				URI:         r.URI,
+				Name:        r.Name,
+				Description: r.Description,
+				MimeType:    r.MIMEType,
+			})
+		}
+	}
+	return out
+}
+
+// ListMCPPrompts lists the prompts of every enabled server.
+func ListMCPPrompts(ctx context.Context) []MCPPromptInfo {
+	var out []MCPPromptInfo
+	mgr := GetMCPManager()
+	for _, name := range mgr.Servers() {
+		c, _, err := mgr.Client(ctx, name)
+		if err != nil {
+			logging.Error("error creating mcp client", "server", name, "error", err)
+			continue
+		}
+		res, err := c.ListPrompts(ctx, mcp.ListPromptsRequest{})
+		if err != nil {
+			logging.Warn("error listing mcp prompts", "server", name, "error", err)
+			continue
+		}
+		for _, p := range res.Prompts {
+			out = append(out, MCPPromptInfo{
+				Server:      name,
+				Name:        p.Name,
+				Description: p.Description,
+				Arguments:   p.Arguments,
+			})
+		}
+	}
+	return out
+}
+
+// ReadMCPResource reads one resource and returns its concatenated text content.
+func ReadMCPResource(ctx context.Context, server, uri string) (string, error) {
+	c, _, err := GetMCPManager().Client(ctx, server)
+	if err != nil {
+		return "", err
+	}
+	res, err := c.ReadResource(ctx, mcp.ReadResourceRequest{Params: mcp.ReadResourceParams{URI: uri}})
+	if err != nil {
+		return "", err
+	}
+	out := ""
+	for _, rc := range res.Contents {
+		if tc, ok := rc.(mcp.TextResourceContents); ok {
+			out += tc.Text
+		}
+	}
+	return out, nil
+}
+
+// GetMCPPrompt renders a prompt (with arguments) and returns its text.
+func GetMCPPrompt(ctx context.Context, server, name string, args map[string]string) (string, error) {
+	c, _, err := GetMCPManager().Client(ctx, server)
+	if err != nil {
+		return "", err
+	}
+	res, err := c.GetPrompt(ctx, mcp.GetPromptRequest{Params: mcp.GetPromptParams{Name: name, Arguments: args}})
+	if err != nil {
+		return "", err
+	}
+	out := ""
+	for _, m := range res.Messages {
+		if tc, ok := m.Content.(mcp.TextContent); ok {
+			out += tc.Text
+		}
+	}
+	return out, nil
 }

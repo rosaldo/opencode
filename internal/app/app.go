@@ -164,6 +164,9 @@ func (app *App) Shutdown() {
 		app.Agents.Shutdown()
 	}
 
+	// Close every persistent MCP client (Spec 08 lifecycle).
+	agent.GetMCPManager().CloseAll()
+
 	// Perform additional cleanup for LSP clients
 	app.clientsMutex.RLock()
 	clients := make(map[string]*lsp.Client, len(app.LSPClients))

@@ -23,6 +23,11 @@ type MCPType string
 const (
 	MCPStdio MCPType = "stdio"
 	MCPSse   MCPType = "sse"
+	// MCPLocal and MCPRemote are the v2 spellings; local behaves like stdio,
+	// remote uses the streamable HTTP transport (Spec 08).
+	MCPLocal  MCPType = "local"
+	MCPRemote MCPType = "remote"
+	MCPHTTP   MCPType = "http"
 )
 
 // MCPServer defines the configuration for a Model Control Protocol server.
@@ -33,6 +38,16 @@ type MCPServer struct {
 	Type    MCPType           `json:"type"`
 	URL     string            `json:"url"`
 	Headers map[string]string `json:"headers"`
+	// Enabled is the v2 flag; nil means enabled. A disabled server is neither
+	// started nor exposed (Spec 08).
+	Enabled *bool `json:"enabled,omitempty"`
+	// Timeout in milliseconds, overriding the global mcp.timeout.
+	Timeout int `json:"timeout,omitempty"`
+}
+
+// IsEnabled reports whether the server should be started.
+func (s MCPServer) IsEnabled() bool {
+	return s.Enabled == nil || *s.Enabled
 }
 
 type AgentName string
@@ -120,9 +135,11 @@ type ShellConfig struct {
 
 // Config is the main configuration structure for the application.
 type Config struct {
-	Data       Data                              `json:"data"`
-	WorkingDir string                            `json:"wd,omitempty"`
-	MCPServers map[string]MCPServer              `json:"mcpServers,omitempty"`
+	Data       Data                 `json:"data"`
+	WorkingDir string               `json:"wd,omitempty"`
+	MCPServers map[string]MCPServer `json:"mcpServers,omitempty"`
+	// MCPTimeout is the global mcp.timeout in milliseconds (Spec 08).
+	MCPTimeout int                               `json:"-" mapstructure:"-"`
 	Providers  map[models.ModelProvider]Provider `json:"providers,omitempty"`
 	LSP        map[string]LSPConfig              `json:"lsp,omitempty"`
 	// Agents is the unified agent map (opencode v2): builtin agents ("coder",
@@ -250,6 +267,10 @@ func Load(workingDir string, debug bool) (*Config, error) {
 	// providers.<p>.settings/models are decoded from the raw map too: model
 	// names contain dots, which viper would split into nested keys (Spec 06).
 	applyProviderSettings(merged)
+
+	// The v2 mcp block (servers with local/remote types, enabled, timeout) is
+	// merged into the legacy MCPServers map (Spec 08).
+	applyMCPConfig(merged)
 
 	// Merge models declared under providers.<p>.models into the catalog so they
 	// resolve like built-ins and their limits feed token budgets (Spec 06b).
