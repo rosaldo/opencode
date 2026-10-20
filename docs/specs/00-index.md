@@ -56,7 +56,7 @@ geração v2** (`https://opencode.ai/config.json`), não a 1.19.3.
 | 9 | [09-tui.md](09-tui.md) | TUI v2: keybinds (`tui.json`/`cli.json`), mouse/scroll, sessões, paste | Verificado (imagens/kitty → imagem) | 11, 07 |
 | 10 | [10-plugins.md](10-plugins.md) | `plugins`: loader, protocolo (stdio), hooks, custom tools, UI | 10a/10b Verificado (tools/UI → 10c) | 11, 08 |
 | 11 | [11-config.md](11-config.md) | **Config v2 (base)**: `opencode.json(c)`, `$schema`, `{env:}`/`{file:}`, chaves v2, schema gerador | Verificado | — |
-| 12 | [12-opencode-ai.md](12-opencode-ai.md) | serve/share/web, ACP | Planejado | 06, 11, 09 |
+| 12 | [12-opencode-ai.md](12-opencode-ai.md) | serve/share/web, ACP | 12a/12c Verificado (web/zen fora de escopo) | 06, 11, 09 |
 | 13 | [13-agents-v2.md](13-agents-v2.md) | **Agents v2**: fonte única (`Source`), mapa `agents`, `default_agent`, `system` inline, permissões array v2 | Verificado | 01, 11 |
 
 Ordem sugerida: **11 → 13 → 06 → 07 → 08 → 09 → 10 → 12** (ver roadmap). A 13 consolida a

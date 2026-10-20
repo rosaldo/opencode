@@ -1220,6 +1220,16 @@
       "description": "Named local directories or Git repositories available as external context",
       "type": "object"
     },
+    "share": {
+      "default": "disabled",
+      "description": "Conversation sharing mode",
+      "enum": [
+        "manual",
+        "auto",
+        "disabled"
+      ],
+      "type": "string"
+    },
     "shell": {
       "description": "Shell used for terminal and shell tool execution",
       "properties": {

@@ -678,6 +678,14 @@ func generateSchema() map[string]any {
 		"default":     true,
 	}
 
+	// Conversation sharing (Spec 12).
+	schema["properties"].(map[string]any)["share"] = map[string]any{
+		"type":        "string",
+		"description": "Conversation sharing mode",
+		"enum":        []string{"manual", "auto", "disabled"},
+		"default":     "disabled",
+	}
+
 	// Add LSP configuration
 	schema["properties"].(map[string]any)["lsp"] = map[string]any{
 		"type":        "object",

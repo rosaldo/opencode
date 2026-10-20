@@ -66,6 +66,29 @@ pontos de integração com a nuvem (`zen`/modelos hospedados).
 - `internal/acp`: handshake + uma troca de mensagem.
 - Share: geração/invalidação de link (backend local).
 
+## Status
+
+- **12a serve/share local** — Verificado. Pacote **novo** `internal/server`: API HTTP com
+  `GET /api/health`, `GET /api/sessions`, `GET /api/sessions/{id}`,
+  `GET /api/sessions/{id}/messages`, `GET /api/events` (SSE via broker) e
+  `POST/GET/DELETE /api/share[/{id}]` (share **self-hosted** local, opção (b): links em memória,
+  `URL` aponta para o próprio servidor). Bind **loopback por padrão** (`127.0.0.1:0`); bind
+  não-loopback **exige token** (recusa sem ele); auth por `Authorization: Bearer` ou `?token=`.
+  Comando `opencode serve` (`cmd/serve.go`) liga os brokers de sessão/mensagem ao stream SSE.
+  `Config.Share` (`manual|auto|disabled`, default `disabled`) parseado; schema emite `share`.
+  Testes: `internal/server/server_test.go` (health, auth, sessões/mensagens, SSE, share
+  create/get/revoke, não-loopback sem token), `internal/config/share_test.go`.
+- **12c ACP** — Verificado. Pacote **novo** `internal/acp`: JSON-RPC 2.0 newline-delimited sobre
+  stdio; métodos `initialize` (handshake com `protocolVersion: 1`), `session/new`, `session/prompt`
+  (streaming via notificações `session/update` + resposta `stopReason`), `session/cancel`; método
+  desconhecido → erro JSON-RPC. Comando `opencode acp` (`cmd/acp.go`) adapta `agent.Service`
+  (`AgentEvent` → chunks de texto). Testes: `internal/acp/acp_test.go` (handshake, prompt com
+  streaming, sessão desconhecida, cancel, método desconhecido).
+- **12b web UI** e **12d zen/modelos hospedados** — **fora de escopo por ora** (documentado): a
+  web UI consumiria a API 12a; `zen` depende de API oficial estável inexistente. O fork segue
+  100% local; não há dependência de serviços de terceiros.
+- Sem config de share, comportamento inalterado (só local) — critério 5 atendido.
+
 ## Riscos
 
 - **Escopo e expectativa**: paridade real com `opencode.ai` depende de APIs oficiais indisponíveis

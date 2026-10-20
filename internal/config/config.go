@@ -175,6 +175,9 @@ type Config struct {
 	TUI            TUIConfig   `json:"tui"`
 	Shell          ShellConfig `json:"shell,omitempty"`
 	AutoCompact    bool        `json:"autoCompact,omitempty"`
+	// Share controls conversation sharing (Spec 12): "manual", "auto" or
+	// "disabled". Empty is treated as "disabled".
+	Share string `json:"share,omitempty"`
 
 	// ---- Auxiliary v2 keys (Spec 11c): parsed/validated, behaviour lives in
 	// the owning spec. They are decoded from the raw merged map (aux.go) so their
@@ -570,6 +573,7 @@ func setDefaults(debug bool) {
 	viper.SetDefault("contextPaths", defaultContextPaths)
 	viper.SetDefault("tui.theme", "opencode")
 	viper.SetDefault("autoCompact", true)
+	viper.SetDefault("share", "disabled")
 
 	// Set default shell from environment or fallback to /bin/bash
 	shellPath := os.Getenv("SHELL")
