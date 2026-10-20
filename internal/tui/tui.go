@@ -91,6 +91,66 @@ var helpEsc = key.NewBinding(
 	key.WithHelp("?", "toggle help"),
 )
 
+// resolvedKeybinds holds the keybinds resolved from config (Spec 09). It is set
+// once by applyKeybinds and read by dialogs that need the extra session actions.
+var resolvedKeybinds Keybinds
+
+// disabledKey is a never-matching key used when a binding is disabled.
+const disabledKey = "__disabled__"
+
+// binding builds a key.Binding from the resolved keys of id, falling back to
+// fallback when the id is unknown. A disabled binding uses disabledKey so it can
+// never match.
+func binding(id KeybindID, help string, fallback []string) key.Binding {
+	keys := resolvedKeybinds.Keys(id)
+	if keys == nil && fallback != nil {
+		keys = fallback
+	}
+	helpKey := fallbackHelp(fallback, help)
+	if len(keys) == 0 {
+		keys = []string{disabledKey}
+		helpKey = "none"
+	} else {
+		helpKey = keys[0]
+	}
+	return key.NewBinding(
+		key.WithKeys(keys...),
+		key.WithHelp(helpKey, help),
+	)
+}
+
+func fallbackHelp(fallback []string, def string) string {
+	if len(fallback) > 0 {
+		return fallback[0]
+	}
+	return def
+}
+
+// applyKeybinds resolves the configured keybinds over the defaults and updates
+// the package keymap. Unknown ids are ignored with a warning (Spec 09).
+func applyKeybinds() {
+	var configured map[string]string
+	if cfg := config.Get(); cfg != nil {
+		configured = cfg.TUI.Keybinds
+	}
+	kb, warnings := ResolveKeybinds(configured)
+	for _, w := range warnings {
+		logging.Warn(w)
+	}
+	resolvedKeybinds = kb
+	keys = keyMap{
+		Logs:          binding(KeybindLogsToggle, "logs", []string{"ctrl+l"}),
+		Quit:          binding(KeybindAppExit, "quit", []string{"ctrl+c"}),
+		Help:          binding(KeybindHelpToggle, "toggle help", []string{"ctrl+_", "ctrl+h"}),
+		SwitchSession: binding(KeybindSessionList, "switch session", []string{"ctrl+s"}),
+		SwitchAgent:   binding(KeybindAgentList, "switch agent", []string{"tab", "ctrl+a"}),
+		Commands:      binding(KeybindCommandList, "commands", []string{"ctrl+k"}),
+		Filepicker:    binding(KeybindFilePicker, "select files to upload", []string{"ctrl+f"}),
+		Models:        binding(KeybindModelList, "model selection", []string{"ctrl+o"}),
+		SwitchTheme:   binding(KeybindThemeList, "switch theme", []string{"ctrl+t"}),
+	}
+}
+
 var returnKey = key.NewBinding(
 	key.WithKeys("esc"),
 	key.WithHelp("esc", "close"),
@@ -231,6 +291,45 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		return a, tea.Batch(cmds...)
+	case tea.MouseMsg:
+		// Translate wheel scroll into up/down keys for the focused component
+		// (Spec 09). Press/release and other buttons are ignored for now.
+		var keyName string
+		switch msg.Button {
+		case tea.MouseButtonWheelUp:
+			keyName = "up"
+		case tea.MouseButtonWheelDown:
+			keyName = "down"
+		default:
+			return a, nil
+		}
+		if msg.Action != tea.MouseActionPress {
+			return a, nil
+		}
+		keyMsg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(keyName)}
+		switch keyName {
+		case "up":
+			keyMsg = tea.KeyMsg{Type: tea.KeyUp}
+		case "down":
+			keyMsg = tea.KeyMsg{Type: tea.KeyDown}
+		}
+		if a.showSessionDialog {
+			d, cmd := a.sessionDialog.Update(keyMsg)
+			a.sessionDialog = d.(dialog.SessionDialog)
+			return a, cmd
+		}
+		if a.showCommandDialog {
+			d, cmd := a.commandDialog.Update(keyMsg)
+			a.commandDialog = d.(dialog.CommandDialog)
+			return a, cmd
+		}
+		if a.showModelDialog {
+			d, cmd := a.modelDialog.Update(keyMsg)
+			a.modelDialog = d.(dialog.ModelDialog)
+			return a, cmd
+		}
+		a.pages[a.currentPage], cmd = a.pages[a.currentPage].Update(keyMsg)
+		return a, cmd
 	// Status
 	case util.InfoMsg:
 		s, cmd := a.status.Update(msg)
@@ -424,6 +523,31 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.currentPage == page.ChatPage {
 			return a, util.CmdHandler(chat.SessionSelectedMsg(msg.Session))
 		}
+		return a, nil
+
+	case dialog.SessionRenameRequestMsg:
+		sess := msg.Session
+		sess.Title = msg.Title
+		if _, err := a.app.Sessions.Save(context.Background(), sess); err != nil {
+			return a, util.ReportError(err)
+		}
+		sessions, err := a.app.Sessions.List(context.Background())
+		if err != nil {
+			return a, util.ReportError(err)
+		}
+		a.sessionDialog.SetSessions(sessions)
+		a.sessionDialog.SetSelectedSession(sess.ID)
+		return a, nil
+
+	case dialog.SessionDeleteRequestMsg:
+		if err := a.app.Sessions.Delete(context.Background(), msg.Session.ID); err != nil {
+			return a, util.ReportError(err)
+		}
+		sessions, err := a.app.Sessions.List(context.Background())
+		if err != nil {
+			return a, util.ReportError(err)
+		}
+		a.sessionDialog.SetSessions(sessions)
 		return a, nil
 
 	case dialog.CommandSelectedMsg:
@@ -958,6 +1082,7 @@ func (a appModel) View() string {
 }
 
 func New(app *app.App) tea.Model {
+	applyKeybinds()
 	startPage := page.ChatPage
 	model := &appModel{
 		currentPage:   startPage,

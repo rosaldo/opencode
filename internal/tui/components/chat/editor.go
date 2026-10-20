@@ -36,6 +36,7 @@ type editorCmp struct {
 type EditorKeyMaps struct {
 	Send       key.Binding
 	OpenEditor key.Binding
+	Paste      key.Binding
 }
 
 type bluredEditorKeyMaps struct {
@@ -57,6 +58,10 @@ var editorMaps = EditorKeyMaps{
 	OpenEditor: key.NewBinding(
 		key.WithKeys("ctrl+e"),
 		key.WithHelp("ctrl+e", "open editor"),
+	),
+	Paste: key.NewBinding(
+		key.WithKeys("ctrl+v"),
+		key.WithHelp("ctrl+v", "paste image"),
 	),
 }
 
@@ -159,6 +164,28 @@ func (m *editorCmp) mention(text string) (string, string) {
 	return clean, name
 }
 
+// pasteClipboard attaches an image from the system clipboard, degrading to a
+// text paste when no image is available (Spec 09).
+func (m *editorCmp) pasteClipboard() tea.Msg {
+	if content, mime, name, err := util.ClipboardImage(); err == nil && len(content) > 0 {
+		if len(m.attachments) >= maxAttachments {
+			return util.InfoMsg{Type: util.InfoTypeError, Msg: fmt.Sprintf("cannot add more than %d images", maxAttachments)}
+		}
+		m.attachments = append(m.attachments, message.Attachment{
+			FilePath: name,
+			FileName: name,
+			MimeType: mime,
+			Content:  content,
+		})
+		return nil
+	}
+	if text, err := util.ClipboardText(); err == nil && text != "" {
+		m.textarea.SetValue(m.textarea.Value() + text)
+		return nil
+	}
+	return util.InfoMsg{Type: util.InfoTypeWarn, Msg: util.ErrClipboardUnavailable.Error()}
+}
+
 func (m *editorCmp) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	switch msg := msg.(type) {
@@ -212,6 +239,9 @@ func (m *editorCmp) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, util.ReportWarn("Agent is working, please wait...")
 			}
 			return m, m.openEditor()
+		}
+		if key.Matches(msg, editorMaps.Paste) {
+			return m, util.CmdHandler(m.pasteClipboard())
 		}
 		if key.Matches(msg, DeleteKeyMaps.Escape) {
 			m.deleteMode = false

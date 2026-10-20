@@ -1348,6 +1348,13 @@
     "tui": {
       "description": "Terminal User Interface configuration",
       "properties": {
+        "keybinds": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Keybind id to binding map (e.g. session_list: ctrl+s, \u003cleader\u003e prefix, \"none\" to disable)",
+          "type": "object"
+        },
         "theme": {
           "default": "opencode",
           "description": "TUI theme name",

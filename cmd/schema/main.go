@@ -119,6 +119,13 @@ func generateSchema() map[string]any {
 					"tron",
 				},
 			},
+			"keybinds": map[string]any{
+				"type":        "object",
+				"description": "Keybind id to binding map (e.g. session_list: ctrl+s, <leader> prefix, \"none\" to disable)",
+				"additionalProperties": map[string]any{
+					"type": "string",
+				},
+			},
 		},
 	}
 

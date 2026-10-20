@@ -125,6 +125,9 @@ type LSPConfig struct {
 // TUIConfig defines the configuration for the Terminal User Interface.
 type TUIConfig struct {
 	Theme string `json:"theme,omitempty"`
+	// Keybinds maps a keybind id (e.g. "session_list") to a binding (e.g.
+	// "ctrl+s", "<leader>a", or "none" to disable). See internal/tui (Spec 09).
+	Keybinds map[string]string `json:"keybinds,omitempty"`
 }
 
 // ShellConfig defines the configuration for the shell used by the bash tool.

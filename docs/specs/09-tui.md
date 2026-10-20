@@ -75,6 +75,26 @@ Fechar lacunas da TUI: **keybinds configuráveis**, suporte a **mouse/scroll**, 
 - Dialog de sessão: busca/rename/delete (lógica pura).
 - Mouse: teste de hit-test das zonas (bubblezone) sem depender de terminal.
 
+## Status
+
+- **Verificado**:
+  - **Keybinds configuráveis** (09a): `tui.keybinds` (`internal/config/config.go` `TUIConfig.Keybinds`)
+    com `internal/tui/keybinds.go` (defaults id→binding, `<leader>` resolvido para sequência de
+    duas teclas, `"none"`/`false` desabilita, ids desconhecidos → aviso e ignorados). `applyKeybinds`
+    reconstrói o `keyMap` do `tui.go` a partir da config; defaults idênticos ao keymap anterior.
+    Testes: `internal/tui/keybinds_test.go`, `internal/config/tui_test.go`. Schema emite `tui.keybinds`.
+  - **Sessões**: diálogo com busca incremental (`/`), renomear (`r`) e apagar com confirmação (`d`
+    + `y`); emite `SessionRenameRequestMsg`/`SessionDeleteRequestMsg` tratados no `tui.go` via
+    `Sessions.Save`/`Delete`. Testes: `dialog/session_test.go`.
+  - **Mouse**: `tea.WithMouseCellMotion()` no `cmd/root.go`; roda (wheel) traduzida para `up`/`down`
+    no `tui.go` e encaminhada para o diálogo ativo ou página atual.
+  - **Paste de imagem**: `internal/tui/util/clipboard.go` (macOS `pngpaste`; Linux `wl-paste`/`xclip`),
+    com fallback para texto; `ctrl+v` no editor anexa imagem (respeita `maxAttachments`) ou cola texto;
+    `SniffImageMime`. Testes: `internal/tui/util/clipboard_test.go`.
+- Pendências conscientes: hyperlink/kitty/sixel e renderização de imagem nas mensagens do chat
+  ficam para a spec de imagem própria; hit-test de zonas (`bubblezone`) para clique/seleção
+  precisa (hoje só scroll por roda) — não bloqueia os critérios de aceite centrais.
+
 ## Riscos
 
 - Mouse muda eventos: revisar handlers para não quebrar teclado.
