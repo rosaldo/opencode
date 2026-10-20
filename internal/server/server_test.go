@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"strings"
 	"testing"
@@ -47,6 +48,35 @@ func newTestServer(t *testing.T, token string) *Server {
 	}
 	t.Cleanup(func() { s.Close() })
 	return s
+}
+
+func TestUIPageServed(t *testing.T) {
+	s := newTestServer(t, "")
+	for _, path := range []string{"/", "/ui"} {
+		resp, err := http.Get(s.URL() + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("%s status = %d", path, resp.StatusCode)
+		}
+		if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/html") {
+			t.Fatalf("%s content-type = %q", path, ct)
+		}
+		if !strings.Contains(string(body), "/api/sessions") {
+			t.Fatalf("%s body does not reference the API", path)
+		}
+	}
+	resp, err := http.Get(s.URL() + "/nope")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("unknown path status = %d", resp.StatusCode)
+	}
 }
 
 func TestHealthNoAuth(t *testing.T) {

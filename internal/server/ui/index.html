@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>opencode</title>
+<style>
+  :root { --bg:#1e1e2e; --fg:#cdd6f4; --muted:#6c7086; --accent:#89b4fa; --panel:#181825; --border:#313244; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background:var(--bg); color:var(--fg); height:100vh; display:flex; }
+  #sidebar { width:280px; border-right:1px solid var(--border); background:var(--panel); overflow-y:auto; }
+  #sidebar h1 { font-size:14px; margin:0; padding:12px; border-bottom:1px solid var(--border); color:var(--accent); }
+  .session { padding:8px 12px; border-bottom:1px solid var(--border); cursor:pointer; font-size:12px; }
+  .session:hover, .session.active { background:var(--bg); }
+  .session .title { color:var(--fg); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .session .meta { color:var(--muted); font-size:10px; margin-top:2px; }
+  #main { flex:1; display:flex; flex-direction:column; overflow:hidden; }
+  #messages { flex:1; overflow-y:auto; padding:16px; }
+  .msg { margin-bottom:14px; max-width:900px; }
+  .msg .role { font-size:10px; text-transform:uppercase; color:var(--muted); margin-bottom:4px; }
+  .msg .body { white-space:pre-wrap; word-wrap:break-word; font-size:13px; line-height:1.5; }
+  .msg.user .body { color:var(--accent); }
+  .msg.assistant .body { color:var(--fg); }
+  .msg.tool .body { color:var(--muted); }
+  #status { padding:6px 12px; font-size:11px; color:var(--muted); border-top:1px solid var(--border); }
+  #empty { color:var(--muted); padding:24px; }
+</style>
+</head>
+<body>
+<div id="sidebar">
+  <h1>opencode</h1>
+  <div id="sessions"></div>
+</div>
+<div id="main">
+  <div id="messages"><div id="empty">Select a session</div></div>
+  <div id="status">connect...</div>
+</div>
+<script>
+(function () {
+  const params = new URLSearchParams(location.search);
+  const token = params.get("token") || "";
+  const withToken = (u) => token ? u + (u.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(token) : u;
+
+  const sessionsEl = document.getElementById("sessions");
+  const messagesEl = document.getElementById("messages");
+  const statusEl = document.getElementById("status");
+
+  let current = null;
+
+  async function api(path) {
+    const res = await fetch(withToken(path));
+    if (!res.ok) throw new Error(path + " -> " + res.status);
+    return res.json();
+  }
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  }
+
+  function renderSessions(list) {
+    if (!list || !list.length) { sessionsEl.innerHTML = '<div class="session"><div class="meta">no sessions</div></div>'; return; }
+    sessionsEl.innerHTML = "";
+    for (const s of list) {
+      const div = document.createElement("div");
+      div.className = "session" + (current === s.id ? " active" : "");
+      div.innerHTML = '<div class="title">' + esc(s.title || s.id) + '</div><div class="meta">' + esc(s.id).slice(0, 12) + "</div>";
+      div.onclick = () => selectSession(s.id);
+      sessionsEl.appendChild(div);
+    }
+  }
+
+  function renderMessages(list) {
+    if (!list || !list.length) { messagesEl.innerHTML = '<div id="empty">No messages</div>'; return; }
+    messagesEl.innerHTML = "";
+    for (const m of list) {
+      const div = document.createElement("div");
+      const role = (m.role || "assistant").toLowerCase();
+      div.className = "msg " + esc(role);
+      const text = m.content || m.summary || "";
+      div.innerHTML = '<div class="role">' + esc(m.role || "") + '</div><div class="body">' + esc(text) + "</div>";
+      messagesEl.appendChild(div);
+    }
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  async function selectSession(id) {
+    current = id;
+    statusEl.textContent = "loading " + id.slice(0, 12);
+    try {
+      const msgs = await api("/api/sessions/" + encodeURIComponent(id) + "/messages");
+      renderMessages(msgs);
+      const list = await api("/api/sessions");
+      renderSessions(list);
+      statusEl.textContent = "session " + id.slice(0, 12);
+    } catch (e) { statusEl.textContent = "error: " + e.message; }
+  }
+
+  async function refreshSessions() {
+    try { renderSessions(await api("/api/sessions")); }
+    catch (e) { statusEl.textContent = "error: " + e.message; }
+  }
+
+  function subscribe() {
+    const es = new EventSource(withToken("/api/events"));
+    es.onopen = () => { statusEl.textContent = current ? "session " + current.slice(0, 12) : "connected"; };
+    es.onerror = () => { statusEl.textContent = "reconnecting..."; };
+    const reload = () => { refreshSessions(); if (current) selectSession(current); };
+    es.addEventListener("session.created", reload);
+    es.addEventListener("session.updated", reload);
+    es.addEventListener("message.created", reload);
+    es.addEventListener("message.updated", reload);
+  }
+
+  refreshSessions();
+  subscribe();
+})();
+</script>
+</body>
+</html>

@@ -60,6 +60,11 @@ and a Server-Sent Events stream. A token is required for any non-loopback bind.`
 		}
 		defer srv.Close()
 		fmt.Printf("opencode serve listening on %s\n", srv.URL())
+		if token != "" {
+			fmt.Printf("web UI: %s/?token=%s\n", srv.URL(), token)
+		} else {
+			fmt.Printf("web UI: %s/\n", srv.URL())
+		}
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()

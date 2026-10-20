@@ -84,9 +84,15 @@ pontos de integração com a nuvem (`zen`/modelos hospedados).
   desconhecido → erro JSON-RPC. Comando `opencode acp` (`cmd/acp.go`) adapta `agent.Service`
   (`AgentEvent` → chunks de texto). Testes: `internal/acp/acp_test.go` (handshake, prompt com
   streaming, sessão desconhecida, cancel, método desconhecido).
-- **12b web UI** e **12d zen/modelos hospedados** — **fora de escopo por ora** (documentado): a
-  web UI consumiria a API 12a; `zen` depende de API oficial estável inexistente. O fork segue
-  100% local; não há dependência de serviços de terceiros.
+- **12b web UI** — Verificado. `internal/server/ui/index.html` (embutido via `go:embed`) servido em
+  `/` e `/ui` (`handleUI`; demais paths → 404). A página é autossuficiente (sem build): lista
+  sessões (`/api/sessions`), carrega mensagens (`/api/sessions/{id}/messages`) e assina o stream
+  `/api/events` (SSE). Quando há token configurado, lê `?token=` da própria URL e o repassa nas
+  chamadas; `opencode serve` imprime a URL do web UI. Testes: `internal/server/server_test.go`
+  (`TestUIPageServed`).
+- **12d zen/modelos hospedados** — **fora de escopo por ora** (documentado): `zen` depende de API
+  oficial estável inexistente. O fork segue com providers via spec 06 (incl. endpoints
+  OpenAI-compatíveis apontando para serviços hospedados).
 - Sem config de share, comportamento inalterado (só local) — critério 5 atendido.
 
 ## Riscos

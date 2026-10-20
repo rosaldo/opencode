@@ -5,6 +5,7 @@ package server
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -18,6 +19,11 @@ import (
 	"github.com/opencode-ai/opencode/internal/pubsub"
 	"github.com/opencode-ai/opencode/internal/session"
 )
+
+// uiHTML is the minimal web UI served at "/" (Spec 12b).
+//
+//go:embed ui/index.html
+var uiHTML []byte
 
 // Event is a generic event fanned out over SSE.
 type Event struct {
@@ -85,6 +91,10 @@ func New(cfg Config) (*Server, error) {
 	mux.HandleFunc("/api/events", s.auth(s.handleEvents))
 	mux.HandleFunc("/api/share", s.auth(s.handleShare))
 	mux.HandleFunc("/api/share/", s.auth(s.handleShareByID))
+	// The web UI is static; it reads the token (when required) from its own
+	// query string and forwards it on API calls.
+	mux.HandleFunc("/", s.handleUI)
+	mux.HandleFunc("/ui", s.handleUI)
 	s.http = &http.Server{Handler: mux}
 	return s, nil
 }
@@ -164,6 +174,17 @@ func tokenFromRequest(r *http.Request) string {
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// handleUI serves the embedded web UI at "/" and "/ui".
+func (s *Server) handleUI(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/" && r.URL.Path != "/ui" {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(uiHTML)
 }
 
 func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
