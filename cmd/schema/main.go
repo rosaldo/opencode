@@ -210,65 +210,140 @@ func generateSchema() map[string]any {
 
 	schema["properties"].(map[string]any)["providers"] = providerSchema
 
-	// Add agents
-	agentSchema := map[string]any{
-		"type":        "object",
-		"description": "Agent configurations",
-		"additionalProperties": map[string]any{
-			"type":        "object",
-			"description": "Agent configuration",
-			"properties": map[string]any{
-				"model": map[string]any{
-					"type":        "string",
-					"description": "Model ID for the agent",
-				},
-				"maxTokens": map[string]any{
-					"type":        "integer",
-					"description": "Maximum tokens for the agent",
-					"minimum":     1,
-				},
-				"reasoningEffort": map[string]any{
-					"type":        "string",
-					"description": "Reasoning effort for models that support it (OpenAI, Anthropic)",
-					"enum":        []string{"low", "medium", "high"},
-				},
-			},
-			"required": []string{"model"},
-		},
-	}
-
-	// Add model enum
+	// Add agents (v2). Every agent — builtin override or custom — is described
+	// by the same definition, whether it comes from the "agents" map of the
+	// JSON config or from a markdown file's frontmatter (Spec 13).
 	modelEnum := []string{}
 	for modelID := range models.SupportedModels {
 		modelEnum = append(modelEnum, string(modelID))
 	}
-	agentSchema["additionalProperties"].(map[string]any)["properties"].(map[string]any)["model"].(map[string]any)["enum"] = modelEnum
 
-	// Add specific agent properties
+	agentDefSchema := map[string]any{
+		"type":        "object",
+		"description": "Agent definition (mirrors agent markdown frontmatter)",
+		"properties": map[string]any{
+			"description": map[string]any{
+				"type":        "string",
+				"description": "Short description shown in the agent switcher",
+			},
+			"mode": map[string]any{
+				"type":        "string",
+				"description": "How the agent may be used",
+				"enum":        []string{"primary", "subagent", "all"},
+			},
+			"hidden": map[string]any{
+				"type":        "boolean",
+				"description": "Whether the agent is hidden from the switcher",
+				"default":     false,
+			},
+			"disabled": map[string]any{
+				"type":        "boolean",
+				"description": "Whether the agent is disabled",
+				"default":     false,
+			},
+			"team": map[string]any{
+				"type":        "string",
+				"description": "Department the agent belongs to",
+			},
+			"model": map[string]any{
+				"type":        "string",
+				"description": "Model ID for the agent (bare ID or provider/model)",
+				"enum":        modelEnum,
+			},
+			"maxTokens": map[string]any{
+				"type":        "integer",
+				"description": "Maximum tokens for the agent",
+				"minimum":     1,
+			},
+			"reasoningEffort": map[string]any{
+				"type":        "string",
+				"description": "Reasoning effort for models that support it (OpenAI, Anthropic)",
+				"enum":        []string{"low", "medium", "high"},
+			},
+			"temperature": map[string]any{
+				"type":        "number",
+				"description": "Sampling temperature for the agent",
+			},
+			"tools": map[string]any{
+				"type":        "object",
+				"description": "Allow/deny tools by name; \"*\" is a wildcard",
+				"additionalProperties": map[string]any{
+					"type": "boolean",
+				},
+			},
+			"permissions": map[string]any{
+				"type":        "array",
+				"description": "Ordered per-agent permission policy; the first matching rule wins",
+				"items": map[string]any{
+					"type":     "object",
+					"required": []string{"action", "effect"},
+					"properties": map[string]any{
+						"action": map[string]any{
+							"type":        "string",
+							"description": "Permission key (shell, edit, read, list, webfetch, task) or tool/server name",
+						},
+						"resource": map[string]any{
+							"type":        "string",
+							"description": "Glob matched against the request value (command, subagent name); empty matches anything",
+						},
+						"effect": map[string]any{
+							"type":        "string",
+							"description": "Outcome when the rule matches",
+							"enum":        []string{"allow", "ask", "deny"},
+						},
+					},
+				},
+			},
+			"system": map[string]any{
+				"type":        "string",
+				"description": "Inline prompt text or a {file:./path} reference resolved relative to the config file",
+			},
+			"color": map[string]any{
+				"type":        "string",
+				"description": "Display color for the agent",
+			},
+		},
+	}
+
 	agentProperties := map[string]any{}
 	knownAgents := []string{
 		string(config.AgentCoder),
 		string(config.AgentTask),
 		string(config.AgentTitle),
 	}
-
 	for _, agentName := range knownAgents {
 		agentProperties[agentName] = map[string]any{
 			"$ref": "#/definitions/agent",
 		}
 	}
 
-	// Create a combined schema that allows both specific agents and additional ones
-	combinedAgentSchema := map[string]any{
+	// "agents" holds builtin overrides and custom agents alike.
+	schema["properties"].(map[string]any)["agents"] = map[string]any{
 		"type":                 "object",
-		"description":          "Agent configurations",
+		"description":          "Agent definitions keyed by agent name",
 		"properties":           agentProperties,
-		"additionalProperties": agentSchema["additionalProperties"],
+		"additionalProperties": agentDefSchema,
 	}
 
-	schema["properties"].(map[string]any)["agents"] = combinedAgentSchema
+	// "agent" is the deprecated v1 spelling, read as a fallback.
+	schema["properties"].(map[string]any)["agent"] = map[string]any{
+		"type":                 "object",
+		"description":          "Deprecated: use \"agents\"",
+		"additionalProperties": agentDefSchema,
+	}
+
 	schema["definitions"] = map[string]any{
-		"agent": agentSchema["additionalProperties"],
+		"agent": agentDefSchema,
+	}
+
+	// Default agent selection, with the deprecated v1 spelling.
+	schema["properties"].(map[string]any)["default_agent"] = map[string]any{
+		"type":        "string",
+		"description": "Primary agent selected at boot (falls back to \"coder\")",
+	}
+	schema["properties"].(map[string]any)["defaultAgent"] = map[string]any{
+		"type":        "string",
+		"description": "Deprecated: use \"default_agent\"",
 	}
 
 	// Add LSP configuration

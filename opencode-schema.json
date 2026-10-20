@@ -2,95 +2,155 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "definitions": {
     "agent": {
-      "description": "Agent configuration",
+      "description": "Agent definition (mirrors agent markdown frontmatter)",
       "properties": {
+        "color": {
+          "description": "Display color for the agent",
+          "type": "string"
+        },
+        "description": {
+          "description": "Short description shown in the agent switcher",
+          "type": "string"
+        },
+        "disabled": {
+          "default": false,
+          "description": "Whether the agent is disabled",
+          "type": "boolean"
+        },
+        "hidden": {
+          "default": false,
+          "description": "Whether the agent is hidden from the switcher",
+          "type": "boolean"
+        },
         "maxTokens": {
           "description": "Maximum tokens for the agent",
           "minimum": 1,
           "type": "integer"
         },
-        "model": {
-          "description": "Model ID for the agent",
+        "mode": {
+          "description": "How the agent may be used",
           "enum": [
-            "gpt-4.1",
-            "llama-3.3-70b-versatile",
-            "azure.gpt-4.1",
-            "openrouter.gpt-4o",
-            "openrouter.o1-mini",
-            "openrouter.claude-3-haiku",
-            "claude-3-opus",
-            "gpt-4o",
-            "gpt-4o-mini",
-            "o1",
-            "meta-llama/llama-4-maverick-17b-128e-instruct",
-            "azure.o3-mini",
-            "openrouter.gpt-4o-mini",
-            "openrouter.o1",
-            "claude-3.5-haiku",
-            "o4-mini",
-            "azure.gpt-4.1-mini",
-            "openrouter.o3",
-            "grok-3-beta",
-            "o3-mini",
-            "qwen-qwq",
-            "azure.o1",
-            "openrouter.gemini-2.5-flash",
-            "openrouter.gemini-2.5",
-            "o1-mini",
-            "azure.gpt-4o",
-            "openrouter.gpt-4.1-mini",
-            "openrouter.claude-3.5-sonnet",
-            "openrouter.o3-mini",
-            "gpt-4.1-mini",
-            "gpt-4.5-preview",
-            "gpt-4.1-nano",
-            "deepseek-r1-distill-llama-70b",
-            "azure.gpt-4o-mini",
-            "openrouter.gpt-4.1",
-            "bedrock.claude-3.7-sonnet",
-            "claude-3-haiku",
-            "o3",
-            "gemini-2.0-flash-lite",
-            "azure.o3",
-            "azure.gpt-4.5-preview",
-            "openrouter.claude-3-opus",
-            "grok-3-mini-fast-beta",
-            "claude-4-sonnet",
-            "azure.o4-mini",
-            "grok-3-fast-beta",
-            "claude-3.5-sonnet",
-            "azure.o1-mini",
-            "openrouter.claude-3.7-sonnet",
-            "openrouter.gpt-4.5-preview",
-            "grok-3-mini-beta",
-            "claude-3.7-sonnet",
-            "gemini-2.0-flash",
-            "openrouter.deepseek-r1-free",
-            "vertexai.gemini-2.5-flash",
-            "vertexai.gemini-2.5",
-            "o1-pro",
-            "gemini-2.5",
-            "meta-llama/llama-4-scout-17b-16e-instruct",
-            "azure.gpt-4.1-nano",
-            "openrouter.gpt-4.1-nano",
-            "gemini-2.5-flash",
-            "openrouter.o4-mini",
-            "openrouter.claude-3.5-haiku",
-            "claude-4-opus",
-            "openrouter.o1-pro",
-            "copilot.gpt-4o",
-            "copilot.gpt-4o-mini",
-            "copilot.gpt-4.1",
-            "copilot.claude-3.5-sonnet",
-            "copilot.claude-3.7-sonnet",
-            "copilot.claude-sonnet-4",
-            "copilot.o1",
-            "copilot.o3-mini",
-            "copilot.o4-mini",
-            "copilot.gemini-2.0-flash",
-            "copilot.gemini-2.5-pro"
+            "primary",
+            "subagent",
+            "all"
           ],
           "type": "string"
+        },
+        "model": {
+          "description": "Model ID for the agent (bare ID or provider/model)",
+          "enum": [
+            "openrouter.o3",
+            "openrouter.o3-mini",
+            "grok-3-mini-beta",
+            "grok-3-fast-beta",
+            "copilot.claude-3.7-sonnet",
+            "meta-llama/llama-4-scout-17b-16e-instruct",
+            "azure.o4-mini",
+            "grok-3-beta",
+            "vertexai.gemini-2.5-flash",
+            "bedrock.claude-3.7-sonnet",
+            "claude-4-opus",
+            "gemini-2.5",
+            "azure.gpt-4.5-preview",
+            "openrouter.deepseek-r1-free",
+            "openrouter.gemini-2.5-flash",
+            "copilot.gpt-3.5-turbo",
+            "gpt-4o",
+            "gpt-4.1",
+            "gpt-4.1-nano",
+            "qwen-qwq",
+            "gpt-4o-mini",
+            "openrouter.gpt-4.1-mini",
+            "copilot.o4-mini",
+            "o1",
+            "azure.gpt-4o",
+            "azure.o3",
+            "openrouter.claude-3.5-haiku",
+            "copilot.claude-sonnet-4",
+            "copilot.claude-3.7-sonnet-thought",
+            "claude-3.7-sonnet",
+            "azure.gpt-4o-mini",
+            "azure.gpt-4.1",
+            "openrouter.claude-3.7-sonnet",
+            "openrouter.gpt-4.1-nano",
+            "copilot.gpt-4o",
+            "azure.o1",
+            "openrouter.gpt-4o",
+            "openrouter.gpt-4o-mini",
+            "vertexai.gemini-2.5",
+            "claude-3.5-haiku",
+            "o1-mini",
+            "openrouter.o4-mini",
+            "copilot.gpt-4.1",
+            "copilot.o1",
+            "copilot.claude-3.5-sonnet",
+            "copilot.gemini-2.0-flash",
+            "copilot.gpt-4",
+            "gpt-4.1-mini",
+            "deepseek-r1-distill-llama-70b",
+            "openrouter.gpt-4.5-preview",
+            "openrouter.o1-pro",
+            "openrouter.claude-3-opus",
+            "grok-3-mini-fast-beta",
+            "copilot.gemini-2.5-pro",
+            "o3-mini",
+            "azure.gpt-4.1-mini",
+            "claude-3.5-sonnet",
+            "gemini-2.5-flash",
+            "meta-llama/llama-4-maverick-17b-128e-instruct",
+            "azure.o3-mini",
+            "openrouter.gpt-4.1",
+            "claude-3-haiku",
+            "claude-4-sonnet",
+            "azure.gpt-4.1-nano",
+            "openrouter.claude-3.5-sonnet",
+            "o1-pro",
+            "gemini-2.0-flash",
+            "llama-3.3-70b-versatile",
+            "openrouter.o1-mini",
+            "openrouter.o1",
+            "openrouter.gemini-2.5",
+            "copilot.gpt-4o-mini",
+            "claude-3-opus",
+            "gpt-4.5-preview",
+            "o3",
+            "azure.o1-mini",
+            "openrouter.claude-3-haiku",
+            "copilot.o3-mini",
+            "o4-mini",
+            "gemini-2.0-flash-lite"
+          ],
+          "type": "string"
+        },
+        "permissions": {
+          "description": "Ordered per-agent permission policy; the first matching rule wins",
+          "items": {
+            "properties": {
+              "action": {
+                "description": "Permission key (shell, edit, read, list, webfetch, task) or tool/server name",
+                "type": "string"
+              },
+              "effect": {
+                "description": "Outcome when the rule matches",
+                "enum": [
+                  "allow",
+                  "ask",
+                  "deny"
+                ],
+                "type": "string"
+              },
+              "resource": {
+                "description": "Glob matched against the request value (command, subagent name); empty matches anything",
+                "type": "string"
+              }
+            },
+            "required": [
+              "action",
+              "effect"
+            ],
+            "type": "object"
+          },
+          "type": "array"
         },
         "reasoningEffort": {
           "description": "Reasoning effort for models that support it (OpenAI, Anthropic)",
@@ -100,11 +160,27 @@
             "high"
           ],
           "type": "string"
+        },
+        "system": {
+          "description": "Inline prompt text or a {file:./path} reference resolved relative to the config file",
+          "type": "string"
+        },
+        "team": {
+          "description": "Department the agent belongs to",
+          "type": "string"
+        },
+        "temperature": {
+          "description": "Sampling temperature for the agent",
+          "type": "number"
+        },
+        "tools": {
+          "additionalProperties": {
+            "type": "boolean"
+          },
+          "description": "Allow/deny tools by name; \"*\" is a wildcard",
+          "type": "object"
         }
       },
-      "required": [
-        "model"
-      ],
       "type": "object"
     }
   },
@@ -112,7 +188,7 @@
   "properties": {
     "agent": {
       "additionalProperties": {
-        "description": "Custom agent definition (mirrors agent markdown frontmatter)",
+        "description": "Agent definition (mirrors agent markdown frontmatter)",
         "properties": {
           "color": {
             "description": "Display color for the agent",
@@ -148,15 +224,119 @@
           },
           "model": {
             "description": "Model ID for the agent (bare ID or provider/model)",
+            "enum": [
+              "openrouter.o3",
+              "openrouter.o3-mini",
+              "grok-3-mini-beta",
+              "grok-3-fast-beta",
+              "copilot.claude-3.7-sonnet",
+              "meta-llama/llama-4-scout-17b-16e-instruct",
+              "azure.o4-mini",
+              "grok-3-beta",
+              "vertexai.gemini-2.5-flash",
+              "bedrock.claude-3.7-sonnet",
+              "claude-4-opus",
+              "gemini-2.5",
+              "azure.gpt-4.5-preview",
+              "openrouter.deepseek-r1-free",
+              "openrouter.gemini-2.5-flash",
+              "copilot.gpt-3.5-turbo",
+              "gpt-4o",
+              "gpt-4.1",
+              "gpt-4.1-nano",
+              "qwen-qwq",
+              "gpt-4o-mini",
+              "openrouter.gpt-4.1-mini",
+              "copilot.o4-mini",
+              "o1",
+              "azure.gpt-4o",
+              "azure.o3",
+              "openrouter.claude-3.5-haiku",
+              "copilot.claude-sonnet-4",
+              "copilot.claude-3.7-sonnet-thought",
+              "claude-3.7-sonnet",
+              "azure.gpt-4o-mini",
+              "azure.gpt-4.1",
+              "openrouter.claude-3.7-sonnet",
+              "openrouter.gpt-4.1-nano",
+              "copilot.gpt-4o",
+              "azure.o1",
+              "openrouter.gpt-4o",
+              "openrouter.gpt-4o-mini",
+              "vertexai.gemini-2.5",
+              "claude-3.5-haiku",
+              "o1-mini",
+              "openrouter.o4-mini",
+              "copilot.gpt-4.1",
+              "copilot.o1",
+              "copilot.claude-3.5-sonnet",
+              "copilot.gemini-2.0-flash",
+              "copilot.gpt-4",
+              "gpt-4.1-mini",
+              "deepseek-r1-distill-llama-70b",
+              "openrouter.gpt-4.5-preview",
+              "openrouter.o1-pro",
+              "openrouter.claude-3-opus",
+              "grok-3-mini-fast-beta",
+              "copilot.gemini-2.5-pro",
+              "o3-mini",
+              "azure.gpt-4.1-mini",
+              "claude-3.5-sonnet",
+              "gemini-2.5-flash",
+              "meta-llama/llama-4-maverick-17b-128e-instruct",
+              "azure.o3-mini",
+              "openrouter.gpt-4.1",
+              "claude-3-haiku",
+              "claude-4-sonnet",
+              "azure.gpt-4.1-nano",
+              "openrouter.claude-3.5-sonnet",
+              "o1-pro",
+              "gemini-2.0-flash",
+              "llama-3.3-70b-versatile",
+              "openrouter.o1-mini",
+              "openrouter.o1",
+              "openrouter.gemini-2.5",
+              "copilot.gpt-4o-mini",
+              "claude-3-opus",
+              "gpt-4.5-preview",
+              "o3",
+              "azure.o1-mini",
+              "openrouter.claude-3-haiku",
+              "copilot.o3-mini",
+              "o4-mini",
+              "gemini-2.0-flash-lite"
+            ],
             "type": "string"
           },
           "permissions": {
-            "description": "Per-agent permission policy",
-            "type": "object"
-          },
-          "prompt": {
-            "description": "Inline prompt text or a {file:./path} reference resolved relative to the config file",
-            "type": "string"
+            "description": "Ordered per-agent permission policy; the first matching rule wins",
+            "items": {
+              "properties": {
+                "action": {
+                  "description": "Permission key (shell, edit, read, list, webfetch, task) or tool/server name",
+                  "type": "string"
+                },
+                "effect": {
+                  "description": "Outcome when the rule matches",
+                  "enum": [
+                    "allow",
+                    "ask",
+                    "deny"
+                  ],
+                  "type": "string"
+                },
+                "resource": {
+                  "description": "Glob matched against the request value (command, subagent name); empty matches anything",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "action",
+                "effect"
+              ],
+              "type": "object"
+            },
+            "type": "array"
           },
           "reasoningEffort": {
             "description": "Reasoning effort for models that support it (OpenAI, Anthropic)",
@@ -165,6 +345,10 @@
               "medium",
               "high"
             ],
+            "type": "string"
+          },
+          "system": {
+            "description": "Inline prompt text or a {file:./path} reference resolved relative to the config file",
             "type": "string"
           },
           "team": {
@@ -185,100 +369,160 @@
         },
         "type": "object"
       },
-      "description": "Custom agent definitions keyed by agent name",
+      "description": "Deprecated: use \"agents\"",
       "type": "object"
     },
     "agents": {
       "additionalProperties": {
-        "description": "Agent configuration",
+        "description": "Agent definition (mirrors agent markdown frontmatter)",
         "properties": {
+          "color": {
+            "description": "Display color for the agent",
+            "type": "string"
+          },
+          "description": {
+            "description": "Short description shown in the agent switcher",
+            "type": "string"
+          },
+          "disabled": {
+            "default": false,
+            "description": "Whether the agent is disabled",
+            "type": "boolean"
+          },
+          "hidden": {
+            "default": false,
+            "description": "Whether the agent is hidden from the switcher",
+            "type": "boolean"
+          },
           "maxTokens": {
             "description": "Maximum tokens for the agent",
             "minimum": 1,
             "type": "integer"
           },
-          "model": {
-            "description": "Model ID for the agent",
+          "mode": {
+            "description": "How the agent may be used",
             "enum": [
-              "gpt-4.1",
-              "llama-3.3-70b-versatile",
-              "azure.gpt-4.1",
-              "openrouter.gpt-4o",
-              "openrouter.o1-mini",
-              "openrouter.claude-3-haiku",
-              "claude-3-opus",
-              "gpt-4o",
-              "gpt-4o-mini",
-              "o1",
-              "meta-llama/llama-4-maverick-17b-128e-instruct",
-              "azure.o3-mini",
-              "openrouter.gpt-4o-mini",
-              "openrouter.o1",
-              "claude-3.5-haiku",
-              "o4-mini",
-              "azure.gpt-4.1-mini",
-              "openrouter.o3",
-              "grok-3-beta",
-              "o3-mini",
-              "qwen-qwq",
-              "azure.o1",
-              "openrouter.gemini-2.5-flash",
-              "openrouter.gemini-2.5",
-              "o1-mini",
-              "azure.gpt-4o",
-              "openrouter.gpt-4.1-mini",
-              "openrouter.claude-3.5-sonnet",
-              "openrouter.o3-mini",
-              "gpt-4.1-mini",
-              "gpt-4.5-preview",
-              "gpt-4.1-nano",
-              "deepseek-r1-distill-llama-70b",
-              "azure.gpt-4o-mini",
-              "openrouter.gpt-4.1",
-              "bedrock.claude-3.7-sonnet",
-              "claude-3-haiku",
-              "o3",
-              "gemini-2.0-flash-lite",
-              "azure.o3",
-              "azure.gpt-4.5-preview",
-              "openrouter.claude-3-opus",
-              "grok-3-mini-fast-beta",
-              "claude-4-sonnet",
-              "azure.o4-mini",
-              "grok-3-fast-beta",
-              "claude-3.5-sonnet",
-              "azure.o1-mini",
-              "openrouter.claude-3.7-sonnet",
-              "openrouter.gpt-4.5-preview",
-              "grok-3-mini-beta",
-              "claude-3.7-sonnet",
-              "gemini-2.0-flash",
-              "openrouter.deepseek-r1-free",
-              "vertexai.gemini-2.5-flash",
-              "vertexai.gemini-2.5",
-              "o1-pro",
-              "gemini-2.5",
-              "meta-llama/llama-4-scout-17b-16e-instruct",
-              "azure.gpt-4.1-nano",
-              "openrouter.gpt-4.1-nano",
-              "gemini-2.5-flash",
-              "openrouter.o4-mini",
-              "openrouter.claude-3.5-haiku",
-              "claude-4-opus",
-              "openrouter.o1-pro",
-              "copilot.gpt-4o",
-              "copilot.gpt-4o-mini",
-              "copilot.gpt-4.1",
-              "copilot.claude-3.5-sonnet",
-              "copilot.claude-3.7-sonnet",
-              "copilot.claude-sonnet-4",
-              "copilot.o1",
-              "copilot.o3-mini",
-              "copilot.o4-mini",
-              "copilot.gemini-2.0-flash",
-              "copilot.gemini-2.5-pro"
+              "primary",
+              "subagent",
+              "all"
             ],
             "type": "string"
+          },
+          "model": {
+            "description": "Model ID for the agent (bare ID or provider/model)",
+            "enum": [
+              "openrouter.o3",
+              "openrouter.o3-mini",
+              "grok-3-mini-beta",
+              "grok-3-fast-beta",
+              "copilot.claude-3.7-sonnet",
+              "meta-llama/llama-4-scout-17b-16e-instruct",
+              "azure.o4-mini",
+              "grok-3-beta",
+              "vertexai.gemini-2.5-flash",
+              "bedrock.claude-3.7-sonnet",
+              "claude-4-opus",
+              "gemini-2.5",
+              "azure.gpt-4.5-preview",
+              "openrouter.deepseek-r1-free",
+              "openrouter.gemini-2.5-flash",
+              "copilot.gpt-3.5-turbo",
+              "gpt-4o",
+              "gpt-4.1",
+              "gpt-4.1-nano",
+              "qwen-qwq",
+              "gpt-4o-mini",
+              "openrouter.gpt-4.1-mini",
+              "copilot.o4-mini",
+              "o1",
+              "azure.gpt-4o",
+              "azure.o3",
+              "openrouter.claude-3.5-haiku",
+              "copilot.claude-sonnet-4",
+              "copilot.claude-3.7-sonnet-thought",
+              "claude-3.7-sonnet",
+              "azure.gpt-4o-mini",
+              "azure.gpt-4.1",
+              "openrouter.claude-3.7-sonnet",
+              "openrouter.gpt-4.1-nano",
+              "copilot.gpt-4o",
+              "azure.o1",
+              "openrouter.gpt-4o",
+              "openrouter.gpt-4o-mini",
+              "vertexai.gemini-2.5",
+              "claude-3.5-haiku",
+              "o1-mini",
+              "openrouter.o4-mini",
+              "copilot.gpt-4.1",
+              "copilot.o1",
+              "copilot.claude-3.5-sonnet",
+              "copilot.gemini-2.0-flash",
+              "copilot.gpt-4",
+              "gpt-4.1-mini",
+              "deepseek-r1-distill-llama-70b",
+              "openrouter.gpt-4.5-preview",
+              "openrouter.o1-pro",
+              "openrouter.claude-3-opus",
+              "grok-3-mini-fast-beta",
+              "copilot.gemini-2.5-pro",
+              "o3-mini",
+              "azure.gpt-4.1-mini",
+              "claude-3.5-sonnet",
+              "gemini-2.5-flash",
+              "meta-llama/llama-4-maverick-17b-128e-instruct",
+              "azure.o3-mini",
+              "openrouter.gpt-4.1",
+              "claude-3-haiku",
+              "claude-4-sonnet",
+              "azure.gpt-4.1-nano",
+              "openrouter.claude-3.5-sonnet",
+              "o1-pro",
+              "gemini-2.0-flash",
+              "llama-3.3-70b-versatile",
+              "openrouter.o1-mini",
+              "openrouter.o1",
+              "openrouter.gemini-2.5",
+              "copilot.gpt-4o-mini",
+              "claude-3-opus",
+              "gpt-4.5-preview",
+              "o3",
+              "azure.o1-mini",
+              "openrouter.claude-3-haiku",
+              "copilot.o3-mini",
+              "o4-mini",
+              "gemini-2.0-flash-lite"
+            ],
+            "type": "string"
+          },
+          "permissions": {
+            "description": "Ordered per-agent permission policy; the first matching rule wins",
+            "items": {
+              "properties": {
+                "action": {
+                  "description": "Permission key (shell, edit, read, list, webfetch, task) or tool/server name",
+                  "type": "string"
+                },
+                "effect": {
+                  "description": "Outcome when the rule matches",
+                  "enum": [
+                    "allow",
+                    "ask",
+                    "deny"
+                  ],
+                  "type": "string"
+                },
+                "resource": {
+                  "description": "Glob matched against the request value (command, subagent name); empty matches anything",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "action",
+                "effect"
+              ],
+              "type": "object"
+            },
+            "type": "array"
           },
           "reasoningEffort": {
             "description": "Reasoning effort for models that support it (OpenAI, Anthropic)",
@@ -288,14 +532,30 @@
               "high"
             ],
             "type": "string"
+          },
+          "system": {
+            "description": "Inline prompt text or a {file:./path} reference resolved relative to the config file",
+            "type": "string"
+          },
+          "team": {
+            "description": "Department the agent belongs to",
+            "type": "string"
+          },
+          "temperature": {
+            "description": "Sampling temperature for the agent",
+            "type": "number"
+          },
+          "tools": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "description": "Allow/deny tools by name; \"*\" is a wildcard",
+            "type": "object"
           }
         },
-        "required": [
-          "model"
-        ],
         "type": "object"
       },
-      "description": "Agent configurations",
+      "description": "Agent definitions keyed by agent name",
       "properties": {
         "coder": {
           "$ref": "#/definitions/agent"
@@ -354,6 +614,10 @@
       "type": "boolean"
     },
     "defaultAgent": {
+      "description": "Deprecated: use \"default_agent\"",
+      "type": "string"
+    },
+    "default_agent": {
       "description": "Primary agent selected at boot (falls back to \"coder\")",
       "type": "string"
     },
@@ -464,8 +728,7 @@
               "openrouter",
               "bedrock",
               "azure",
-              "vertexai",
-              "copilot"
+              "vertexai"
             ],
             "type": "string"
           }

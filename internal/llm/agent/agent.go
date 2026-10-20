@@ -729,15 +729,15 @@ func createAgentProvider(name string) (provider.Provider, error) {
 		maxTokens = model.DefaultMaxTokens
 		reasoningEffort = def.ReasoningEffort
 	} else {
-		agentCfg, ok := cfg.Agents[config.AgentName(name)]
+		agentCfg, ok := cfg.Agents[name]
 		if !ok {
 			// Custom agents without an explicit model inherit from the coder.
-			agentCfg, ok = cfg.Agents[config.AgentCoder]
+			agentCfg, ok = cfg.Agents[string(config.AgentCoder)]
 			if !ok {
 				return nil, fmt.Errorf("agent %s is not configured", name)
 			}
 		}
-		model, ok = models.SupportedModels[agentCfg.Model]
+		model, ok = models.SupportedModels[models.ModelID(agentCfg.Model)]
 		if !ok {
 			return nil, fmt.Errorf("model %s not supported", agentCfg.Model)
 		}

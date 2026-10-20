@@ -2,7 +2,10 @@ package agentdef
 
 import (
 	"fmt"
+	"strings"
 	"sync"
+
+	"github.com/opencode-ai/opencode/internal/logging"
 )
 
 // DefaultName is the fallback agent used when none is configured.
@@ -28,6 +31,11 @@ func (r *Registry) Register(d *Definition) error {
 	}
 	if d.Mode == "" {
 		d.Mode = ModeAll
+	}
+	// Subagents are selected by their description, so a missing one is a likely
+	// authoring mistake; warn rather than reject, matching the lenient loader.
+	if d.Mode == ModeSubagent && strings.TrimSpace(d.Description) == "" {
+		logging.Warn("subagent has no description", "agent", d.Name)
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()

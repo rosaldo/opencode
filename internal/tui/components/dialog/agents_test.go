@@ -8,7 +8,7 @@ import (
 
 func newFilterFixture() *agentDialogCmp {
 	return &agentDialogCmp{
-		agents: []agentdef.Definition{
+		agents: []*agentdef.Definition{
 			{Name: "coder", Description: "general purpose coding agent"},
 			{Name: "security-audit", Description: "reviews code for vulnerabilities"},
 			{Name: "docs-writer", Description: "writes documentation"},

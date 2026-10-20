@@ -18,10 +18,10 @@ func writeConfigFile(t *testing.T, path, content string) {
 	}
 }
 
-func TestLoadConfigDefinitionsParsesAgentMap(t *testing.T) {
+func TestReadAgentConfigsParsesAgentsMap(t *testing.T) {
 	dir := t.TempDir()
 	writeConfigFile(t, filepath.Join(dir, ".opencode.json"), `{
-		"agent": {
+		"agents": {
 			"security-auditor": {
 				"description": "Auditoria de segurança",
 				"mode": "subagent",
@@ -32,39 +32,66 @@ func TestLoadConfigDefinitionsParsesAgentMap(t *testing.T) {
 		}
 	}`)
 
-	defs := loadConfigDefinitions([]string{dir})
-	if len(defs) != 1 {
-		t.Fatalf("defs = %d, want 1", len(defs))
+	agents, err := readAgentConfigs(dir)
+	if err != nil {
+		t.Fatalf("read: %v", err)
 	}
-	d := defs[0]
-	if d.Name != "security-auditor" {
-		t.Fatalf("name = %q", d.Name)
+	def, ok := agents["security-auditor"]
+	if !ok {
+		t.Fatalf("agents = %v, want security-auditor", agents)
 	}
-	if d.Mode != agentdef.ModeSubagent {
-		t.Fatalf("mode = %q", d.Mode)
+	if def.Mode != "subagent" {
+		t.Fatalf("mode = %q", def.Mode)
 	}
-	if d.Model != "anthropic/claude-sonnet-4" {
-		t.Fatalf("model = %q", d.Model)
+	if def.Model != "anthropic/claude-sonnet-4" {
+		t.Fatalf("model = %q", def.Model)
 	}
-	if d.Tools["edit"] {
+	if def.Tools["edit"] {
 		t.Fatal("expected edit tool to be disabled")
+	}
+
+	reg, err := agentdef.Load(agentdef.JSONSource{Agents: agents, BaseDir: dir, ResolvePrompt: resolvePrompt})
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if _, ok := reg.Get("security-auditor"); !ok {
+		t.Fatal("expected security-auditor in registry")
 	}
 }
 
-func TestLoadConfigDefinitionsPromptFile(t *testing.T) {
+func TestReadAgentConfigsDeprecatedAgentKey(t *testing.T) {
 	dir := t.TempDir()
-	writeConfigFile(t, filepath.Join(dir, "prompts", "audit.txt"), "Você é um auditor.")
 	writeConfigFile(t, filepath.Join(dir, ".opencode.json"), `{
 		"agent": {
-			"auditor": {"mode": "subagent", "prompt": "{file:./prompts/audit.txt}"}
+			"auditor": {"mode": "subagent", "system": "Você é um auditor."}
 		}
 	}`)
 
-	defs := loadConfigDefinitions([]string{dir})
-	if len(defs) != 1 {
-		t.Fatalf("defs = %d, want 1", len(defs))
+	agents, err := readAgentConfigs(dir)
+	if err != nil {
+		t.Fatalf("read: %v", err)
 	}
-	body, err := defs[0].Prompt()
+	if _, ok := agents["auditor"]; !ok {
+		t.Fatalf("deprecated \"agent\" key must still load, got %v", agents)
+	}
+}
+
+func TestJSONSourcePromptFile(t *testing.T) {
+	dir := t.TempDir()
+	writeConfigFile(t, filepath.Join(dir, "prompts", "audit.txt"), "Você é um auditor.")
+	writeConfigFile(t, filepath.Join(dir, ".opencode.json"), `{
+		"agents": {
+			"auditor": {"mode": "subagent", "system": "{file:./prompts/audit.txt}"}
+		}
+	}`)
+
+	agents, _ := readAgentConfigs(dir)
+	reg, err := agentdef.Load(agentdef.JSONSource{Agents: agents, BaseDir: dir, ResolvePrompt: resolvePrompt})
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	def, _ := reg.Get("auditor")
+	body, err := def.Prompt()
 	if err != nil {
 		t.Fatalf("prompt: %v", err)
 	}
@@ -73,59 +100,77 @@ func TestLoadConfigDefinitionsPromptFile(t *testing.T) {
 	}
 }
 
-func TestLoadConfigDefinitionsInlinePrompt(t *testing.T) {
+func TestJSONSourceInlinePrompt(t *testing.T) {
 	dir := t.TempDir()
 	writeConfigFile(t, filepath.Join(dir, ".opencode.json"), `{
-		"agent": {"greeter": {"prompt": "Olá!"}}
+		"agents": {"greeter": {"system": "Olá!"}}
 	}`)
 
-	defs := loadConfigDefinitions([]string{dir})
-	if len(defs) != 1 {
-		t.Fatalf("defs = %d, want 1", len(defs))
+	agents, _ := readAgentConfigs(dir)
+	reg, err := agentdef.Load(agentdef.JSONSource{Agents: agents, BaseDir: dir, ResolvePrompt: resolvePrompt})
+	if err != nil {
+		t.Fatalf("load: %v", err)
 	}
-	body, _ := defs[0].Prompt()
+	def, _ := reg.Get("greeter")
+	body, _ := def.Prompt()
 	if body != "Olá!" {
 		t.Fatalf("body = %q", body)
 	}
 }
 
-func TestLoadConfigDefinitionsLocalWins(t *testing.T) {
+func TestJSONSourcesLocalWins(t *testing.T) {
 	global := t.TempDir()
 	project := t.TempDir()
 	writeConfigFile(t, filepath.Join(global, ".opencode.json"), `{
-		"agent": {"audit": {"description": "global", "mode": "subagent"}}
+		"agents": {"audit": {"description": "global", "mode": "subagent"}}
 	}`)
 	writeConfigFile(t, filepath.Join(project, ".opencode.json"), `{
-		"agent": {"audit": {"description": "project", "mode": "subagent"}}
+		"agents": {"audit": {"description": "project", "mode": "subagent"}}
 	}`)
 
-	defs := loadConfigDefinitions([]string{global, project})
-	if len(defs) != 1 {
-		t.Fatalf("defs = %d, want 1 (deduplicated by name)", len(defs))
+	reg, err := agentdef.Load(jsonSources([]string{global, project})...)
+	if err != nil {
+		t.Fatalf("load: %v", err)
 	}
-	if defs[0].Description != "project" {
-		t.Fatalf("description = %q, want project", defs[0].Description)
+	def, ok := reg.Get("audit")
+	if !ok {
+		t.Fatal("expected audit agent")
+	}
+	if def.Description != "project" {
+		t.Fatalf("description = %q, want project", def.Description)
 	}
 }
 
-func TestLoadConfigDefinitionsInvalidModeFallsBack(t *testing.T) {
+func TestJSONSourceInvalidModeFallsBack(t *testing.T) {
 	dir := t.TempDir()
 	writeConfigFile(t, filepath.Join(dir, ".opencode.json"), `{
-		"agent": {"weird": {"mode": "bogus"}}
+		"agents": {"weird": {"mode": "bogus"}}
 	}`)
 
-	defs := loadConfigDefinitions([]string{dir})
-	if len(defs) != 1 {
-		t.Fatalf("defs = %d, want 1", len(defs))
+	agents, _ := readAgentConfigs(dir)
+	reg, err := agentdef.Load(agentdef.JSONSource{Agents: agents, BaseDir: dir})
+	if err != nil {
+		t.Fatalf("load: %v", err)
 	}
-	if defs[0].Mode != agentdef.ModeAll {
-		t.Fatalf("mode = %q, want all", defs[0].Mode)
+	def, ok := reg.Get("weird")
+	if !ok {
+		t.Fatal("expected weird agent")
+	}
+	if def.Mode != agentdef.ModeAll {
+		t.Fatalf("mode = %q, want all", def.Mode)
 	}
 }
 
-func TestLoadConfigDefinitionsMissingFile(t *testing.T) {
-	if defs := loadConfigDefinitions([]string{t.TempDir()}); len(defs) != 0 {
-		t.Fatalf("defs = %d, want 0", len(defs))
+func TestReadAgentConfigsMissingFile(t *testing.T) {
+	agents, err := readAgentConfigs(t.TempDir())
+	if err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if len(agents) != 0 {
+		t.Fatalf("agents = %v, want empty", agents)
+	}
+	if len(jsonSources([]string{t.TempDir()})) != 0 {
+		t.Fatal("missing config must yield no sources")
 	}
 }
 
@@ -172,8 +217,8 @@ func TestValidateDefinitionsInheritsAndFillsTokens(t *testing.T) {
 	prev := cfg
 	defer func() { cfg = prev }()
 
-	cfg = &Config{Agents: map[AgentName]Agent{
-		AgentCoder: {Model: "claude-4-sonnet", MaxTokens: 5000},
+	cfg = &Config{Agents: map[string]AgentDefinition{
+		string(AgentCoder): {Model: "claude-4-sonnet", MaxTokens: 5000},
 	}}
 
 	reg := agentdef.NewRegistry()

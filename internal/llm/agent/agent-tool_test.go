@@ -88,7 +88,7 @@ func TestSubagentsListingHonoursTaskPolicy(t *testing.T) {
 	caller := &agentdef.Definition{
 		Name:        "restricted",
 		Mode:        agentdef.ModeAll,
-		Permissions: map[string]any{"task": map[string]any{"*": "deny", "reviewer": "allow"}},
+		Permissions: []agentdef.PermissionRule{{Action: "task", Resource: "reviewer", Effect: "allow"}, {Action: "task", Resource: "", Effect: "deny"}},
 	}
 
 	listed := subagents(caller, false, nil)
@@ -218,7 +218,7 @@ func TestAgentToolAvailability(t *testing.T) {
 	denied := &agentdef.Definition{
 		Name:        "isolated",
 		Mode:        agentdef.ModeAll,
-		Permissions: map[string]any{"task": "deny"},
+		Permissions: []agentdef.PermissionRule{{Action: "task", Resource: "", Effect: "deny"}},
 	}
 	if agentToolFor(denied, AgentToolDeps{}) != nil {
 		t.Error("an agent that denies every subagent must not get the delegation tool")

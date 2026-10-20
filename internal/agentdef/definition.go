@@ -20,6 +20,20 @@ const (
 	ModeAll Mode = "all"
 )
 
+// PermissionRule is one entry of an agent's permissions list (opencode v2).
+// The list is ordered: the first rule whose Action and Resource match a request
+// wins, so more specific rules must come first.
+type PermissionRule struct {
+	// Action is the permission being gated: "shell", "edit", "read", "list",
+	// "webfetch", "task" or a tool/server name.
+	Action string `json:"action" yaml:"action"`
+	// Resource is an optional glob the request value is matched against (for
+	// example a shell command or a subagent name). Empty matches everything.
+	Resource string `json:"resource,omitempty" yaml:"resource,omitempty"`
+	// Effect is "allow", "ask" or "deny".
+	Effect string `json:"effect" yaml:"effect"`
+}
+
 // Definition describes an agent discovered from a markdown file or provided by
 // configuration. Prompt bodies are loaded lazily via Prompt so that booting with
 // hundreds of agents stays cheap.
@@ -40,8 +54,8 @@ type Definition struct {
 	ReasoningEffort string
 	Temperature     float64
 
-	Tools       map[string]bool // allow/deny by tool name; "*" wildcard
-	Permissions map[string]any  // reserved for per-agent permission policy
+	Tools       map[string]bool  // allow/deny by tool name; "*" wildcard
+	Permissions []PermissionRule // ordered per-agent permission policy (v2)
 	Color       string
 
 	promptPath string

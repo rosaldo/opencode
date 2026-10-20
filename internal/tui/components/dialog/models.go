@@ -296,8 +296,8 @@ func (m *modelDialogCmp) selectedModelID() models.ModelID {
 
 func GetSelectedModel(cfg *config.Config) models.Model {
 
-	agentCfg := cfg.Agents[config.AgentCoder]
-	selectedModelId := agentCfg.Model
+	agentCfg := cfg.Agents[string(config.AgentCoder)]
+	selectedModelId := models.ModelID(agentCfg.Model)
 	return models.SupportedModels[selectedModelId]
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/opencode-ai/opencode/internal/agentdef"
 	"github.com/opencode-ai/opencode/internal/pubsub"
 )
 
@@ -32,29 +33,33 @@ type cmdParams struct{ Cmd string }
 
 func (p cmdParams) PermissionCommand() string { return p.Cmd }
 
+// rule is a shorthand for a PermissionRule in tests.
+func rule(action, resource, effect string) agentdef.PermissionRule {
+	return agentdef.PermissionRule{Action: action, Resource: resource, Effect: effect}
+}
+
 func TestParsePolicy(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
 		name      string
-		perms     map[string]any
+		perms     []agentdef.PermissionRule
 		wantErr   bool
 		wantRules int
 	}{
 		{name: "empty", perms: nil, wantRules: 0},
-		{name: "single action", perms: map[string]any{"edit": "deny"}, wantRules: 1},
-		{name: "bash map", perms: map[string]any{
-			"bash": map[string]any{"*": "ask", "git *": "allow"},
-		}, wantRules: 3},
-		{name: "task map", perms: map[string]any{
-			"task": map[string]any{"*": "deny", "reviewer": "allow"},
-		}, wantRules: 3},
-		{name: "bash as string", perms: map[string]any{"bash": "allow"}, wantRules: 1},
-		{name: "invalid action", perms: map[string]any{"edit": "maybe"}, wantErr: true},
-		{name: "invalid type", perms: map[string]any{"edit": 42}, wantErr: true},
-		{name: "bash map with bad action", perms: map[string]any{
-			"bash": map[string]any{"*": "nope"},
-		}, wantErr: true},
+		{name: "single action", perms: []agentdef.PermissionRule{rule("edit", "", "deny")}, wantRules: 1},
+		{name: "ordered rules", perms: []agentdef.PermissionRule{
+			rule("shell", "*", "ask"),
+			rule("shell", "git *", "allow"),
+		}, wantRules: 2},
+		{name: "task rules", perms: []agentdef.PermissionRule{
+			rule("task", "*", "deny"),
+			rule("task", "reviewer", "allow"),
+		}, wantRules: 2},
+		{name: "effect is case insensitive", perms: []agentdef.PermissionRule{rule("shell", "", "Allow")}, wantRules: 1},
+		{name: "invalid effect", perms: []agentdef.PermissionRule{rule("edit", "", "maybe")}, wantErr: true},
+		{name: "empty effect", perms: []agentdef.PermissionRule{rule("edit", "", "")}, wantErr: true},
 	}
 
 	for _, tc := range cases {
@@ -70,9 +75,8 @@ func TestParsePolicy(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			gotRules := len(policy.rules) + len(policy.subRules["bash"]) + len(policy.subRules["task"])
-			if gotRules != tc.wantRules {
-				t.Errorf("rules = %d, want %d (%+v sub %+v)", gotRules, tc.wantRules, policy.rules, policy.subRules)
+			if len(policy.rules) != tc.wantRules {
+				t.Errorf("rules = %d, want %d (%+v)", len(policy.rules), tc.wantRules, policy.rules)
 			}
 			if len(tc.perms) == 0 && policy.HasRules {
 				t.Error("empty policy must not report HasRules")
@@ -89,82 +93,95 @@ func TestPolicyDecide(t *testing.T) {
 
 	cases := []struct {
 		name        string
-		perms       map[string]any
+		perms       []agentdef.PermissionRule
 		tool        string
 		params      any
 		wantAction  Action
 		wantMatched bool
 	}{
 		{
-			name:  "no policy never matches",
-			perms: nil,
-			tool:  "bash",
+			name: "no policy never matches",
+			tool: "bash",
 		},
 		{
 			name:        "edit key covers write",
-			perms:       map[string]any{"edit": "deny"},
+			perms:       []agentdef.PermissionRule{rule("edit", "", "deny")},
 			tool:        "write",
 			wantAction:  ActionDeny,
 			wantMatched: true,
 		},
 		{
 			name:        "edit key covers patch",
-			perms:       map[string]any{"edit": "deny"},
+			perms:       []agentdef.PermissionRule{rule("edit", "", "deny")},
 			tool:        "patch",
 			wantAction:  ActionDeny,
 			wantMatched: true,
 		},
 		{
 			name:        "edit key does not cover bash",
-			perms:       map[string]any{"edit": "deny"},
+			perms:       []agentdef.PermissionRule{rule("edit", "", "deny")},
 			tool:        "bash",
 			wantMatched: false,
 		},
 		{
 			name:        "unknown tool keeps its own name as key",
-			perms:       map[string]any{"mysrv_search": "deny"},
+			perms:       []agentdef.PermissionRule{rule("mysrv_search", "", "deny")},
 			tool:        "mysrv_search",
 			wantAction:  ActionDeny,
 			wantMatched: true,
 		},
 		{
-			name:        "action is case insensitive",
-			perms:       map[string]any{"webfetch": "Allow"},
-			tool:        "fetch",
-			wantAction:  ActionAllow,
-			wantMatched: true,
-		},
-		{
-			name:        "exact rule beats catch all",
-			perms:       map[string]any{"bash": "deny", "*": "allow"},
+			name:        "rule may name the tool directly",
+			perms:       []agentdef.PermissionRule{rule("bash", "", "deny")},
 			tool:        "bash",
 			wantAction:  ActionDeny,
 			wantMatched: true,
 		},
 		{
-			name:        "wildcard covers mcp tools",
-			perms:       map[string]any{"mysrv_*": "deny"},
-			tool:        "mysrv_search",
+			name:        "effect is case insensitive",
+			perms:       []agentdef.PermissionRule{rule("webfetch", "", "Allow")},
+			tool:        "fetch",
+			wantAction:  ActionAllow,
+			wantMatched: true,
+		},
+		{
+			name: "first matching rule wins",
+			perms: []agentdef.PermissionRule{
+				rule("shell", "", "deny"),
+				rule("shell", "git *", "allow"),
+			},
+			tool:        "bash",
+			params:      "git status",
 			wantAction:  ActionDeny,
 			wantMatched: true,
 		},
 		{
-			name:        "wildcard does not cover other servers",
-			perms:       map[string]any{"mysrv_*": "deny"},
-			tool:        "othersrv_search",
-			wantMatched: false,
+			name: "specific rule first wins",
+			perms: []agentdef.PermissionRule{
+				rule("shell", "git *", "allow"),
+				rule("shell", "", "deny"),
+			},
+			tool:        "bash",
+			params:      "git status",
+			wantAction:  ActionAllow,
+			wantMatched: true,
 		},
 		{
-			name:        "longest wildcard wins",
-			perms:       map[string]any{"mysrv_*": "ask", "mysrv_write_*": "deny"},
-			tool:        "mysrv_write_file",
+			name: "non matching resource falls through to catch all",
+			perms: []agentdef.PermissionRule{
+				rule("shell", "git *", "allow"),
+				rule("shell", "", "deny"),
+			},
+			tool:        "bash",
+			params:      "rm -rf /tmp/cache",
 			wantAction:  ActionDeny,
 			wantMatched: true,
 		},
 		{
-			name: "bash map asks by default",
-			perms: map[string]any{
-				"bash": map[string]any{"*": "ask", "git *": "allow"},
+			name: "resource matched against the command",
+			perms: []agentdef.PermissionRule{
+				rule("shell", "*", "ask"),
+				rule("shell", "git *", "allow"),
 			},
 			tool:        "bash",
 			params:      "rm -rf /tmp/cache",
@@ -172,19 +189,10 @@ func TestPolicyDecide(t *testing.T) {
 			wantMatched: true,
 		},
 		{
-			name: "bash map allows matching commands",
-			perms: map[string]any{
-				"bash": map[string]any{"*": "ask", "git *": "allow"},
-			},
-			tool:        "bash",
-			params:      "git commit -m 'nope'",
-			wantAction:  ActionAllow,
-			wantMatched: true,
-		},
-		{
-			name: "bash command may come from a CommandProvider",
-			perms: map[string]any{
-				"bash": map[string]any{"*": "deny", "git status": "allow"},
+			name: "command may come from a CommandProvider",
+			perms: []agentdef.PermissionRule{
+				rule("shell", "git status", "allow"),
+				rule("shell", "", "deny"),
 			},
 			tool:        "bash",
 			params:      cmdParams{Cmd: "git status"},
@@ -192,21 +200,13 @@ func TestPolicyDecide(t *testing.T) {
 			wantMatched: true,
 		},
 		{
-			name: "bash map without catch all falls through",
-			perms: map[string]any{
-				"bash": map[string]any{"git *": "allow"},
+			name: "no catch all falls through",
+			perms: []agentdef.PermissionRule{
+				rule("shell", "git *", "allow"),
 			},
 			tool:        "bash",
 			params:      "rm -rf /",
 			wantMatched: false,
-		},
-		{
-			name:        "bash plain string needs no command",
-			perms:       map[string]any{"bash": "deny"},
-			tool:        "bash",
-			params:      "git status",
-			wantAction:  ActionDeny,
-			wantMatched: true,
 		},
 	}
 
@@ -271,7 +271,8 @@ func TestPermissionKey(t *testing.T) {
 	t.Parallel()
 
 	cases := map[string]string{
-		"bash":        "bash",
+		"bash":        "shell",
+		"shell":       "shell",
 		"write":       "edit",
 		"edit":        "edit",
 		"patch":       "edit",
@@ -294,29 +295,30 @@ func TestPolicyTask(t *testing.T) {
 
 	cases := []struct {
 		name        string
-		perms       map[string]any
+		perms       []agentdef.PermissionRule
 		subagent    string
 		wantAction  Action
 		wantMatched bool
 	}{
-		{name: "no policy never matches", perms: nil, subagent: "task"},
+		{name: "no policy never matches", subagent: "task"},
 		{
 			name:        "unrelated key never matches",
-			perms:       map[string]any{"edit": "deny"},
+			perms:       []agentdef.PermissionRule{rule("edit", "", "deny")},
 			subagent:    "task",
 			wantMatched: false,
 		},
 		{
 			name:        "plain action applies to every subagent",
-			perms:       map[string]any{"task": "deny"},
+			perms:       []agentdef.PermissionRule{rule("task", "", "deny")},
 			subagent:    "task",
 			wantAction:  ActionDeny,
 			wantMatched: true,
 		},
 		{
-			name: "plain action applies to a named subagent",
-			perms: map[string]any{
-				"task": map[string]any{"*": "deny", "reviewer": "allow"},
+			name: "specific subagent rule first wins",
+			perms: []agentdef.PermissionRule{
+				rule("task", "reviewer", "allow"),
+				rule("task", "", "deny"),
 			},
 			subagent:    "reviewer",
 			wantAction:  ActionAllow,
@@ -324,35 +326,29 @@ func TestPolicyTask(t *testing.T) {
 		},
 		{
 			name: "catch all denies the rest",
-			perms: map[string]any{
-				"task": map[string]any{"*": "deny", "reviewer": "allow"},
+			perms: []agentdef.PermissionRule{
+				rule("task", "reviewer", "allow"),
+				rule("task", "", "deny"),
 			},
 			subagent:    "planner",
 			wantAction:  ActionDeny,
 			wantMatched: true,
 		},
 		{
-			name: "map without catch all has no opinion",
-			perms: map[string]any{
-				"task": map[string]any{"reviewer": "deny"},
+			name: "no catch all has no opinion",
+			perms: []agentdef.PermissionRule{
+				rule("task", "reviewer", "deny"),
 			},
 			subagent:    "planner",
 			wantMatched: false,
 		},
 		{
 			name: "ask is reported as is",
-			perms: map[string]any{
-				"task": map[string]any{"*": "ask"},
+			perms: []agentdef.PermissionRule{
+				rule("task", "", "ask"),
 			},
 			subagent:    "anyone",
 			wantAction:  ActionAsk,
-			wantMatched: true,
-		},
-		{
-			name:        "longest pattern wins",
-			perms:       map[string]any{"task": map[string]any{"rev*": "deny", "reviewer": "allow"}},
-			subagent:    "reviewer",
-			wantAction:  ActionAllow,
 			wantMatched: true,
 		},
 	}
@@ -378,15 +374,15 @@ func TestPolicyTask(t *testing.T) {
 func TestNewAgentScoped(t *testing.T) {
 	t.Parallel()
 
-	deny, err := ParsePolicy(map[string]any{"edit": "deny"})
+	deny, err := ParsePolicy([]agentdef.PermissionRule{rule("edit", "", "deny")})
 	if err != nil {
 		t.Fatal(err)
 	}
-	allow, err := ParsePolicy(map[string]any{"edit": "allow"})
+	allow, err := ParsePolicy([]agentdef.PermissionRule{rule("edit", "", "allow")})
 	if err != nil {
 		t.Fatal(err)
 	}
-	ask, err := ParsePolicy(map[string]any{"edit": "ask"})
+	ask, err := ParsePolicy([]agentdef.PermissionRule{rule("edit", "", "ask")})
 	if err != nil {
 		t.Fatal(err)
 	}

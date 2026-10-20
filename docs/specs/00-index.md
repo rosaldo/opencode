@@ -57,7 +57,7 @@ geração v2** (`https://opencode.ai/config.json`), não a 1.19.3.
 | 10 | [10-plugins.md](10-plugins.md) | `plugins`: loader, protocolo (stdio), hooks, custom tools, UI | Planejado | 11, 08 |
 | 11 | [11-config.md](11-config.md) | **Config v2 (base)**: `opencode.json(c)`, `$schema`, `{env:}`/`{file:}`, chaves v2, schema gerador | Planejado | — |
 | 12 | [12-opencode-ai.md](12-opencode-ai.md) | serve/share/web, ACP | Planejado | 06, 11, 09 |
-| 13 | [13-agents-v2.md](13-agents-v2.md) | **Agents v2**: fonte única (`Source`), mapa `agents`, `default_agent`, `system` inline, permissões array v2 | Planejado | 01, 11 |
+| 13 | [13-agents-v2.md](13-agents-v2.md) | **Agents v2**: fonte única (`Source`), mapa `agents`, `default_agent`, `system` inline, permissões array v2 | Verificado | 01, 11 |
 
 Ordem sugerida: **11 → 13 → 06 → 07 → 08 → 09 → 10 → 12** (ver roadmap). A 13 consolida a
 costura JSON↔agentdef deixada pela fase 5 (elimina a duplicação `Options.GlobalDefinitions/

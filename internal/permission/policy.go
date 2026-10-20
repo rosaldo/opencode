@@ -3,6 +3,8 @@ package permission
 import (
 	"fmt"
 	"strings"
+
+	"github.com/opencode-ai/opencode/internal/agentdef"
 )
 
 // Action is the outcome of a permission policy rule.
@@ -17,95 +19,49 @@ const (
 	ActionDeny Action = "deny"
 )
 
-// bashPermissionKey is the permission key gated by the bash tool. It also
-// accepts command patterns instead of a single action.
-const bashPermissionKey = "bash"
-
-// Rule pairs a wildcard pattern with the action it triggers.
+// Rule is one ordered entry of a policy: for requests whose permission key (see
+// PermissionKey) equals Action and whose value (shell command, subagent name,
+// …) matches Resource, the policy replies Effect. An empty Resource matches any
+// value, including none.
 type Rule struct {
-	Pattern string
-	Action  Action
+	Action   string
+	Resource string
+	Effect   Action
 }
 
-// Policy is the parsed form of an agent's permissions block. Patterns are
-// matched against permission keys (see PermissionKey) or, for the keys that
-// accept a map ("bash" for shell commands, "task" for subagent names), against
-// the pattern the request carries.
+// Policy is the parsed form of an agent's permissions list (opencode v2). The
+// list is ordered and the first rule that matches a request wins, so more
+// specific rules must come first.
 //
 // The zero Policy is valid and means "no opinion": every request falls through
 // to the wrapped service.
 type Policy struct {
-	// rules hold the permission keys, including the ones that take a map (the
-	// entry for such a key carries the action of its "*" pattern).
 	rules []Rule
-	// subRules hold the patterns of the map valued keys.
-	subRules map[string][]Rule
-	// subDefault holds the "*" action of each map valued key.
-	subDefault map[string]Action
-
 	// HasRules is false when nothing was configured.
 	HasRules bool
 }
 
-// ParsePolicy converts an agent's permissions map into a Policy.
-//
-// Values are "allow", "ask" or "deny". The "bash" and "task" keys additionally
-// accept a map of patterns to actions, e.g. {"*": "ask", "git *": "allow"} for
-// bash commands or {"*": "deny", "reviewer": "allow"} for subagents.
-func ParsePolicy(perms map[string]any) (Policy, error) {
+// ParsePolicy converts an agent's ordered permission rules into a Policy.
+// Every rule's Effect must be "allow", "ask" or "deny".
+func ParsePolicy(perms []agentdef.PermissionRule) (Policy, error) {
 	var p Policy
 	if len(perms) == 0 {
 		return p, nil
 	}
 	p.HasRules = true
-	for key, raw := range perms {
-		switch v := raw.(type) {
-		case string:
-			action, err := parseAction(key, v)
-			if err != nil {
-				return Policy{}, err
-			}
-			p.rules = append(p.rules, Rule{Pattern: key, Action: action})
-		case map[string]any:
-			if err := p.addSubRules(key, v); err != nil {
-				return Policy{}, err
-			}
-		case map[string]string:
-			if err := p.addSubRules(key, stringMapToAny(v)); err != nil {
-				return Policy{}, err
-			}
-		default:
-			return Policy{}, fmt.Errorf("permissions.%s: unsupported value %T", key, raw)
+	p.rules = make([]Rule, 0, len(perms))
+	for i, raw := range perms {
+		action, err := parseAction(i, raw.Effect)
+		if err != nil {
+			return Policy{}, err
 		}
+		p.rules = append(p.rules, Rule{
+			Action:   strings.TrimSpace(raw.Action),
+			Resource: raw.Resource,
+			Effect:   action,
+		})
 	}
 	return p, nil
-}
-
-func (p *Policy) addSubRules(key string, m map[string]any) error {
-	if p.subRules == nil {
-		p.subRules = make(map[string][]Rule)
-		p.subDefault = make(map[string]Action)
-	}
-	rules := make([]Rule, 0, len(m))
-	for pattern, raw := range m {
-		value, ok := raw.(string)
-		if !ok {
-			return fmt.Errorf("permissions.%s[%s]: expected allow, ask or deny", key, pattern)
-		}
-		action, err := parseAction(key+"."+pattern, value)
-		if err != nil {
-			return err
-		}
-		rules = append(rules, Rule{Pattern: pattern, Action: action})
-		if pattern == "*" {
-			p.subDefault[key] = action
-		}
-	}
-	p.subRules[key] = rules
-	// Registering the key itself (even with an empty default) is what makes
-	// Decide and Task reach the patterns below.
-	p.rules = append(p.rules, Rule{Pattern: key, Action: p.subDefault[key]})
-	return nil
 }
 
 // Decide returns the action the policy dictates for a request. The second
@@ -116,46 +72,36 @@ func (p Policy) Decide(req CreatePermissionRequest) (Action, bool) {
 		return "", false
 	}
 	key := PermissionKey(req.ToolName)
-	action, matched := matchRule(p.rules, key)
-	if !matched {
-		return "", false
-	}
-	if patterns, ok := p.subRules[key]; ok && len(patterns) > 0 {
-		action = p.subDefault[key]
-		if target := targetFromParams(req.Params); target != "" {
-			if refined, ok := matchRule(patterns, target); ok {
-				action = refined
-			}
+	value := targetFromParams(req.Params)
+	for _, rule := range p.rules {
+		if rule.Action != key && rule.Action != req.ToolName {
+			continue
 		}
+		if rule.Resource != "" && !MatchWildcard(rule.Resource, value) {
+			continue
+		}
+		return rule.Effect, true
 	}
-	if action == "" {
-		return "", false
-	}
-	return action, true
+	return "", false
 }
 
 // Task returns the action the policy dictates for delegating work to the
-// subagent with the given name. It reads the "task" key, which may be a plain
-// action or a map of subagent names to actions. As with Decide, a false second
-// result means "no opinion".
+// subagent with the given name. It reads the rules whose Action is "task" and
+// whose Resource matches the name; a false second result means "no opinion".
 func (p Policy) Task(subagent string) (Action, bool) {
 	if !p.HasRules {
 		return "", false
 	}
-	action, matched := matchRule(p.rules, "task")
-	if !matched {
-		return "", false
-	}
-	if patterns, ok := p.subRules["task"]; ok && len(patterns) > 0 {
-		action = p.subDefault["task"]
-		if refined, ok := matchRule(patterns, subagent); ok {
-			action = refined
+	for _, rule := range p.rules {
+		if rule.Action != "task" {
+			continue
 		}
+		if rule.Resource != "" && !MatchWildcard(rule.Resource, subagent) {
+			continue
+		}
+		return rule.Effect, true
 	}
-	if action == "" {
-		return "", false
-	}
-	return action, true
+	return "", false
 }
 
 // PermissionKey maps a tool name to the permission key gating it, mirroring the
@@ -169,7 +115,8 @@ func PermissionKey(toolName string) string {
 }
 
 var permissionKeys = map[string]string{
-	bashPermissionKey: bashPermissionKey,
+	bashPermissionKey: shellPermissionKey,
+	"shell":           shellPermissionKey,
 	"write":           "edit",
 	"edit":            "edit",
 	"patch":           "edit",
@@ -180,11 +127,17 @@ var permissionKeys = map[string]string{
 	"agent":           "task",
 }
 
+// bashPermissionKey is the tool name of the shell tool; shellPermissionKey is
+// the v2 permission action that gates it.
+const (
+	bashPermissionKey  = "bash"
+	shellPermissionKey = "shell"
+)
+
 // CommandProvider is implemented by tool parameter structs that carry the value
-// a map valued permission key is matched against: the shell command for bash,
-// the subagent name for the agent tool. It exists so this package can read it
-// out of a request without importing internal/llm/tools, which depends on this
-// package.
+// a rule resource is matched against: the shell command for bash, the subagent
+// name for the agent tool. It exists so this package can read it out of a
+// request without importing internal/llm/tools, which depends on this package.
 type CommandProvider interface {
 	PermissionCommand() string
 }
@@ -197,31 +150,6 @@ func targetFromParams(params any) string {
 		return v.PermissionCommand()
 	}
 	return ""
-}
-
-// matchRule returns the action of the most specific pattern matching value. An
-// exact match always wins; among wildcards the one with the longest literal part
-// wins, so "git *" beats "*" regardless of map iteration order.
-func matchRule(rules []Rule, value string) (Action, bool) {
-	var best Action
-	bestScore := -1
-	found := false
-	for _, r := range rules {
-		if !MatchWildcard(r.Pattern, value) {
-			continue
-		}
-		if score := wildcardScore(r.Pattern, value); score > bestScore {
-			best, bestScore, found = r.Action, score, true
-		}
-	}
-	return best, found
-}
-
-func wildcardScore(pattern, value string) int {
-	if pattern == value {
-		return 1<<30 + len(pattern)
-	}
-	return len(strings.ReplaceAll(pattern, "*", ""))
 }
 
 // MatchWildcard matches value against pattern, where "*" matches any run of
@@ -256,21 +184,13 @@ func MatchWildcard(pattern, value string) bool {
 	return value == ""
 }
 
-func parseAction(what, value string) (Action, error) {
+func parseAction(index int, value string) (Action, error) {
 	switch action := Action(strings.ToLower(strings.TrimSpace(value))); action {
 	case ActionAllow, ActionAsk, ActionDeny:
 		return action, nil
 	case "":
-		return "", fmt.Errorf("permissions.%s: empty action", what)
+		return "", fmt.Errorf("permissions[%d]: empty effect", index)
 	default:
-		return "", fmt.Errorf("permissions.%s: invalid action %q, expected allow, ask or deny", what, value)
+		return "", fmt.Errorf("permissions[%d]: invalid effect %q, expected allow, ask or deny", index, value)
 	}
-}
-
-func stringMapToAny(in map[string]string) map[string]any {
-	out := make(map[string]any, len(in))
-	for k, v := range in {
-		out[k] = v
-	}
-	return out
 }

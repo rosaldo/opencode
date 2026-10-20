@@ -39,7 +39,7 @@ type AgentDialog interface {
 }
 
 type agentDialogCmp struct {
-	agents      []agentdef.Definition
+	agents      []*agentdef.Definition
 	filteredIdx []int
 
 	input        textinput.Model
@@ -98,10 +98,8 @@ func (m *agentDialogCmp) Init() tea.Cmd {
 // every open so newly added agent files appear without a restart.
 func (m *agentDialogCmp) reload() {
 	defs := agentdef.Get().ListByMode(agentdef.ModePrimary, false)
-	m.agents = make([]agentdef.Definition, 0, len(defs))
-	for _, d := range defs {
-		m.agents = append(m.agents, *d)
-	}
+	m.agents = make([]*agentdef.Definition, 0, len(defs))
+	m.agents = append(m.agents, defs...)
 	m.input.SetValue("")
 	m.input.CursorEnd()
 	m.applyFilter()

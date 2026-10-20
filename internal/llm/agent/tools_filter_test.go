@@ -243,7 +243,7 @@ func TestToolsForDefinitionPolicyDeniesBash(t *testing.T) {
 	list := ToolsForDefinition(&agentdef.Definition{
 		Name:        "nobash",
 		Mode:        agentdef.ModeAll,
-		Permissions: map[string]any{"bash": "deny"},
+		Permissions: []agentdef.PermissionRule{{Action: "shell", Effect: "deny"}},
 	}, AgentToolDeps{Permissions: permission.NewPermissionService()})
 
 	var bashTool tools.BaseTool
@@ -276,7 +276,7 @@ func TestToolsForDefinitionPolicyDeniesWrite(t *testing.T) {
 	list := ToolsForDefinition(&agentdef.Definition{
 		Name:        "noedit",
 		Mode:        agentdef.ModeAll,
-		Permissions: map[string]any{"edit": "deny"},
+		Permissions: []agentdef.PermissionRule{{Action: "edit", Effect: "deny"}},
 	}, AgentToolDeps{Permissions: permission.NewPermissionService()})
 
 	var writeTool tools.BaseTool

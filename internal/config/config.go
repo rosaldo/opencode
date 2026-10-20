@@ -44,33 +44,11 @@ const (
 	AgentTitle      AgentName = "title"
 )
 
-// Agent defines configuration for different LLM models and their token limits.
-type Agent struct {
-	Model           models.ModelID `json:"model"`
-	MaxTokens       int64          `json:"maxTokens"`
-	ReasoningEffort string         `json:"reasoningEffort"` // For openai models low,medium,heigh
-}
-
 // AgentDefinition is the config-facing description of a custom agent declared
-// under the "agent" key of the JSON configuration. It mirrors the frontmatter
-// accepted in agent markdown files (Spec 01).
-type AgentDefinition struct {
-	Description     string          `json:"description,omitempty"`
-	Mode            string          `json:"mode,omitempty"`
-	Hidden          bool            `json:"hidden,omitempty"`
-	Disabled        bool            `json:"disabled,omitempty"`
-	Team            string          `json:"team,omitempty"`
-	Model           string          `json:"model,omitempty"`
-	MaxTokens       int64           `json:"maxTokens,omitempty"`
-	ReasoningEffort string          `json:"reasoningEffort,omitempty"`
-	Temperature     float64         `json:"temperature,omitempty"`
-	Tools           map[string]bool `json:"tools,omitempty"`
-	Permissions     map[string]any  `json:"permissions,omitempty"`
-	Color           string          `json:"color,omitempty"`
-	// Prompt is either inline text or a "{file:./path}" reference resolved
-	// relative to the configuration file that declares it.
-	Prompt string `json:"prompt,omitempty"`
-}
+// under the "agents" (v2) key of the JSON configuration. It is an alias of the
+// agentdef.AgentConfig shared with the markdown frontmatter, so both forms parse
+// into the same agentdef.Definition (Spec 13).
+type AgentDefinition = agentdef.AgentConfig
 
 // Provider defines configuration for an LLM provider.
 type Provider struct {
@@ -109,18 +87,30 @@ type Config struct {
 	MCPServers   map[string]MCPServer              `json:"mcpServers,omitempty"`
 	Providers    map[models.ModelProvider]Provider `json:"providers,omitempty"`
 	LSP          map[string]LSPConfig              `json:"lsp,omitempty"`
-	Agents       map[AgentName]Agent               `json:"agents,omitempty"`
-	// Agent declares custom agent definitions keyed by name (Spec 05).
+	// Agents is the unified agent map (opencode v2): builtin agents ("coder",
+	// "task", "title", "summarizer") and custom agents share one namespace and
+	// one shape (AgentConfig), mirroring the markdown frontmatter (Spec 13).
+	Agents map[string]AgentDefinition `json:"agents,omitempty"`
+	// Agent is the pre-v2 (single) custom agent map. It is read for
+	// back-compatibility and merged into the same definitions; use "agents".
+	//
+	// Deprecated: use Agents.
 	Agent map[string]AgentDefinition `json:"agent,omitempty"`
 	// DefaultAgent selects the primary agent used at boot. Falls back to
-	// "coder" when unset or invalid.
-	DefaultAgent string `json:"defaultAgent,omitempty"`
-	Debug        bool   `json:"debug,omitempty"`
-	DebugLSP     bool                              `json:"debugLSP,omitempty"`
-	ContextPaths []string                          `json:"contextPaths,omitempty"`
-	TUI          TUIConfig                         `json:"tui"`
-	Shell        ShellConfig                       `json:"shell,omitempty"`
-	AutoCompact  bool                              `json:"autoCompact,omitempty"`
+	// "coder" when unset or invalid. Its v2 key is "default_agent"; the v1
+	// "defaultAgent" spelling is read as a deprecated alias.
+	DefaultAgent string `json:"default_agent,omitempty" mapstructure:"default_agent"`
+	// DefaultAgentV1 is the deprecated v1 spelling ("defaultAgent"). It is read
+	// only to back-fill DefaultAgent when the v2 key is absent.
+	//
+	// Deprecated: use DefaultAgent ("default_agent").
+	DefaultAgentV1 string `json:"defaultAgent,omitempty" mapstructure:"defaultagent"`
+	Debug        bool                                `json:"debug,omitempty"`
+	DebugLSP     bool                                `json:"debugLSP,omitempty"`
+	ContextPaths []string                            `json:"contextPaths,omitempty"`
+	TUI          TUIConfig                           `json:"tui"`
+	Shell        ShellConfig                         `json:"shell,omitempty"`
+	AutoCompact  bool                                `json:"autoCompact,omitempty"`
 }
 
 // Application constants
@@ -231,14 +221,13 @@ func Load(workingDir string, debug bool) (*Config, error) {
 	}
 
 	if cfg.Agents == nil {
-		cfg.Agents = make(map[AgentName]Agent)
+		cfg.Agents = make(map[string]AgentDefinition)
 	}
 
 	// Override the max tokens for title agent
-	cfg.Agents[AgentTitle] = Agent{
-		Model:     cfg.Agents[AgentTitle].Model,
-		MaxTokens: 80,
-	}
+	title := cfg.Agents[string(AgentTitle)]
+	title.MaxTokens = 80
+	cfg.Agents[string(AgentTitle)] = title
 
 	// Discover and register agent definitions (builtins + global + project).
 	if err := loadAgentDefinitions(workingDir); err != nil {
@@ -267,19 +256,30 @@ func agentSearchDirs() []string {
 }
 
 // loadAgentDefinitions builds the process-wide agent registry from builtins,
-// global directories and the project directory, layering in the custom agent
-// definitions declared in the global and local JSON configuration files.
+// global directories and the project directory. Every input is an
+// agentdef.Source registered in precedence order (later wins):
+//
+//	builtins < global markdown < global JSON < project markdown < project JSON
+//
+// Markdown and the JSON "agents"/"agent" maps share one Definition type, so
+// there is a single code path (Spec 01, Spec 13).
 func loadAgentDefinitions(workingDir string) error {
-	globalDefs := loadConfigDefinitions(configFileDirs())
-	localDefs := loadConfigDefinitions([]string{workingDir})
+	builtins := staticSource(builtinDefinitions())
 
-	reg, err := agentdef.Load(agentdef.Options{
-		GlobalDirs:         agentSearchDirs(),
-		GlobalDefinitions:  globalDefs,
-		ProjectDir:         filepath.Join(workingDir, defaultDataDirectory),
-		ProjectDefinitions: localDefs,
-		Builtins:           builtinDefinitions(),
-	})
+	var globalFiles []agentdef.Source
+	for _, dir := range agentSearchDirs() {
+		globalFiles = append(globalFiles, agentdef.FileSource{Dir: dir})
+	}
+
+	projectDir := filepath.Join(workingDir, defaultDataDirectory)
+
+	sources := []agentdef.Source{builtins}
+	sources = append(sources, globalFiles...)
+	sources = append(sources, jsonSources(configFileDirs())...)
+	sources = append(sources, agentdef.FileSource{Dir: projectDir})
+	sources = append(sources, jsonSources([]string{workingDir})...)
+
+	reg, err := agentdef.Load(sources...)
 	if err != nil {
 		return err
 	}
@@ -287,9 +287,27 @@ func loadAgentDefinitions(workingDir string) error {
 
 	// Resolve the configured default agent (falls back to "coder").
 	if cfg != nil {
-		applyDefaultAgent(reg, cfg.DefaultAgent)
+		applyDefaultAgent(reg, cfg.effectiveDefaultAgent())
 	}
 	return nil
+}
+
+// staticSource adapts a fixed slice of definitions to the Source interface.
+type staticSource []*agentdef.Definition
+
+func (s staticSource) Definitions() ([]*agentdef.Definition, error) { return s, nil }
+
+// effectiveDefaultAgent returns the configured default agent, honouring the
+// deprecated v1 "defaultAgent" spelling when the v2 "default_agent" is unset.
+func (c *Config) effectiveDefaultAgent() string {
+	if strings.TrimSpace(c.DefaultAgent) != "" {
+		return c.DefaultAgent
+	}
+	if strings.TrimSpace(c.DefaultAgentV1) != "" {
+		logging.Warn("config key \"defaultAgent\" is deprecated, use \"default_agent\"")
+		return c.DefaultAgentV1
+	}
+	return ""
 }
 
 // applyDefaultAgent selects the preferred default agent on reg. A name that is
@@ -303,7 +321,7 @@ func applyDefaultAgent(reg *agentdef.Registry, name string) {
 		reg.SetDefault(name)
 		return
 	}
-	logging.Warn("invalid defaultAgent, falling back to coder", "defaultAgent", name)
+	logging.Warn("invalid default agent, falling back to coder", "agent", name)
 }
 
 // configFileDirs returns the directories that may hold a global ".opencode.json",
@@ -322,72 +340,56 @@ func configFileDirs() []string {
 	return dirs
 }
 
-// loadConfigDefinitions reads the "agent" map from the ".opencode.json" file in
-// each dir (in order, later wins) and converts them into agent definitions. The
-// prompt of each definition is resolved relative to the directory it was
-// declared in.
-func loadConfigDefinitions(dirs []string) []*agentdef.Definition {
-	byName := make(map[string]*agentdef.Definition)
-	order := make([]string, 0)
+// jsonSources reads the "agents" (v2) and "agent" (deprecated) maps from the
+// ".opencode.json" in each dir, in order (later wins), and returns them as one
+// Source per directory. The prompt of each definition is resolved relative to
+// the directory it was declared in.
+func jsonSources(dirs []string) []agentdef.Source {
+	var sources []agentdef.Source
 	for _, dir := range dirs {
-		path := filepath.Join(dir, fmt.Sprintf(".%s.json", appName))
-		data, err := os.ReadFile(path)
+		agents, err := readAgentConfigs(dir)
 		if err != nil {
+			logging.Warn("failed to read agent definitions from config", "dir", dir, "error", err)
 			continue
 		}
-		var fileCfg struct {
-			Agent map[string]AgentDefinition `json:"agent"`
-		}
-		if err := json.Unmarshal(data, &fileCfg); err != nil {
-			logging.Warn("failed to parse agent definitions from config", "file", path, "error", err)
+		if len(agents) == 0 {
 			continue
 		}
-		for name, def := range fileCfg.Agent {
-			if _, seen := byName[name]; !seen {
-				order = append(order, name)
-			}
-			byName[name] = definitionFromConfig(name, def, dir)
-		}
+		sources = append(sources, agentdef.JSONSource{
+			Agents:        agents,
+			BaseDir:       dir,
+			ResolvePrompt: resolvePrompt,
+		})
 	}
-	out := make([]*agentdef.Definition, 0, len(order))
-	for _, name := range order {
-		out = append(out, byName[name])
-	}
-	return out
+	return sources
 }
 
-// definitionFromConfig converts a config-facing AgentDefinition into an
-// agentdef.Definition, resolving the "{file:...}" prompt form relative to baseDir.
-func definitionFromConfig(name string, def AgentDefinition, baseDir string) *agentdef.Definition {
-	mode := agentdef.Mode(strings.TrimSpace(def.Mode))
-	switch mode {
-	case "", agentdef.ModePrimary, agentdef.ModeSubagent, agentdef.ModeAll:
-		// ok
-	default:
-		logging.Warn("invalid mode in agent definition, defaulting to all",
-			"agent", name, "mode", def.Mode)
-		mode = agentdef.ModeAll
+// readAgentConfigs returns the merged agent declarations of one directory,
+// combining the v2 "agents" map with the deprecated "agent" map (v2 wins).
+func readAgentConfigs(dir string) (map[string]AgentDefinition, error) {
+	path := filepath.Join(dir, fmt.Sprintf(".%s.json", appName))
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, nil
 	}
-
-	d := &agentdef.Definition{
-		Name:            name,
-		Description:     strings.TrimSpace(def.Description),
-		Mode:            mode,
-		Hidden:          def.Hidden,
-		Disabled:        def.Disabled,
-		Team:            strings.TrimSpace(def.Team),
-		Model:           strings.TrimSpace(def.Model),
-		MaxTokens:       def.MaxTokens,
-		ReasoningEffort: strings.ToLower(strings.TrimSpace(def.ReasoningEffort)),
-		Temperature:     def.Temperature,
-		Tools:           def.Tools,
-		Permissions:     def.Permissions,
-		Color:           strings.TrimSpace(def.Color),
+	var fileCfg struct {
+		Agents map[string]AgentDefinition `json:"agents"`
+		Agent  map[string]AgentDefinition `json:"agent"`
 	}
-	if prompt := strings.TrimSpace(def.Prompt); prompt != "" {
-		d.SetPrompt(resolvePrompt(prompt, baseDir))
+	if err := json.Unmarshal(data, &fileCfg); err != nil {
+		return nil, err
 	}
-	return d
+	if len(fileCfg.Agent) > 0 {
+		logging.Warn("config key \"agent\" is deprecated, use \"agents\"", "file", path)
+	}
+	out := make(map[string]AgentDefinition, len(fileCfg.Agents)+len(fileCfg.Agent))
+	for name, def := range fileCfg.Agent {
+		out[name] = def
+	}
+	for name, def := range fileCfg.Agents {
+		out[name] = def
+	}
+	return out, nil
 }
 
 // resolvePrompt expands the "{file:./path}" prompt form into the file contents
@@ -704,12 +706,12 @@ func applyDefaultValues() {
 }
 
 // It validates model IDs and providers, ensuring they are supported.
-func validateAgent(cfg *Config, name AgentName, agent Agent) error {
+func validateAgent(cfg *Config, name string, agent AgentDefinition) error {
 	// Check if model exists
 	// TODO:	If a copilot model is specified, but model is not found,
 	// 		 	it might be new model. The https://api.githubcopilot.com/models
 	// 		 	endpoint should be queried to validate if the model is supported.
-	model, modelExists := models.SupportedModels[agent.Model]
+	model, modelExists := models.SupportedModels[models.ModelID(agent.Model)]
 	if !modelExists {
 		logging.Warn("unsupported model configured, reverting to default",
 			"agent", name,
@@ -880,7 +882,7 @@ func validateDefinitions() {
 	if cfg == nil {
 		return
 	}
-	inherit := cfg.Agents[AgentCoder].Model
+	inherit := models.ModelID(cfg.Agents[string(AgentCoder)].Model)
 	for _, def := range agentdef.Get().List() {
 		if def.Builtin {
 			continue
@@ -937,29 +939,31 @@ func getProviderAPIKey(provider models.ModelProvider) string {
 }
 
 // setDefaultModelForAgent sets a default model for an agent based on available providers
-func setDefaultModelForAgent(agent AgentName) bool {
+func setDefaultModelForAgent(agent string) bool {
+	setModel := func(model models.ModelID, maxTokens int64, effort string) {
+		def := cfg.Agents[agent]
+		def.Model = string(model)
+		def.MaxTokens = maxTokens
+		def.ReasoningEffort = effort
+		cfg.Agents[agent] = def
+	}
+
 	if hasCopilotCredentials() {
 		maxTokens := int64(5000)
-		if agent == AgentTitle {
+		if agent == string(AgentTitle) {
 			maxTokens = 80
 		}
 
-		cfg.Agents[agent] = Agent{
-			Model:     models.CopilotGPT4o,
-			MaxTokens: maxTokens,
-		}
+		setModel(models.CopilotGPT4o, maxTokens, "")
 		return true
 	}
 	// Check providers in order of preference
 	if apiKey := os.Getenv("ANTHROPIC_API_KEY"); apiKey != "" {
 		maxTokens := int64(5000)
-		if agent == AgentTitle {
+		if agent == string(AgentTitle) {
 			maxTokens = 80
 		}
-		cfg.Agents[agent] = Agent{
-			Model:     models.Claude37Sonnet,
-			MaxTokens: maxTokens,
-		}
+		setModel(models.Claude37Sonnet, maxTokens, "")
 		return true
 	}
 
@@ -969,10 +973,10 @@ func setDefaultModelForAgent(agent AgentName) bool {
 		reasoningEffort := ""
 
 		switch agent {
-		case AgentTitle:
+		case string(AgentTitle):
 			model = models.GPT41Mini
 			maxTokens = 80
-		case AgentTask:
+		case string(AgentTask):
 			model = models.GPT41Mini
 		default:
 			model = models.GPT41
@@ -983,11 +987,7 @@ func setDefaultModelForAgent(agent AgentName) bool {
 			reasoningEffort = "medium"
 		}
 
-		cfg.Agents[agent] = Agent{
-			Model:           model,
-			MaxTokens:       maxTokens,
-			ReasoningEffort: reasoningEffort,
-		}
+		setModel(model, maxTokens, reasoningEffort)
 		return true
 	}
 
@@ -997,10 +997,10 @@ func setDefaultModelForAgent(agent AgentName) bool {
 		reasoningEffort := ""
 
 		switch agent {
-		case AgentTitle:
+		case string(AgentTitle):
 			model = models.OpenRouterClaude35Haiku
 			maxTokens = 80
-		case AgentTask:
+		case string(AgentTask):
 			model = models.OpenRouterClaude37Sonnet
 		default:
 			model = models.OpenRouterClaude37Sonnet
@@ -1011,11 +1011,7 @@ func setDefaultModelForAgent(agent AgentName) bool {
 			reasoningEffort = "medium"
 		}
 
-		cfg.Agents[agent] = Agent{
-			Model:           model,
-			MaxTokens:       maxTokens,
-			ReasoningEffort: reasoningEffort,
-		}
+		setModel(model, maxTokens, reasoningEffort)
 		return true
 	}
 
@@ -1023,44 +1019,34 @@ func setDefaultModelForAgent(agent AgentName) bool {
 		var model models.ModelID
 		maxTokens := int64(5000)
 
-		if agent == AgentTitle {
+		if agent == string(AgentTitle) {
 			model = models.Gemini25Flash
 			maxTokens = 80
 		} else {
 			model = models.Gemini25
 		}
 
-		cfg.Agents[agent] = Agent{
-			Model:     model,
-			MaxTokens: maxTokens,
-		}
+		setModel(model, maxTokens, "")
 		return true
 	}
 
 	if apiKey := os.Getenv("GROQ_API_KEY"); apiKey != "" {
 		maxTokens := int64(5000)
-		if agent == AgentTitle {
+		if agent == string(AgentTitle) {
 			maxTokens = 80
 		}
 
-		cfg.Agents[agent] = Agent{
-			Model:     models.QWENQwq,
-			MaxTokens: maxTokens,
-		}
+		setModel(models.QWENQwq, maxTokens, "")
 		return true
 	}
 
 	if hasAWSCredentials() {
 		maxTokens := int64(5000)
-		if agent == AgentTitle {
+		if agent == string(AgentTitle) {
 			maxTokens = 80
 		}
 
-		cfg.Agents[agent] = Agent{
-			Model:           models.BedrockClaude37Sonnet,
-			MaxTokens:       maxTokens,
-			ReasoningEffort: "medium", // Claude models support reasoning
-		}
+		setModel(models.BedrockClaude37Sonnet, maxTokens, "medium") // Claude models support reasoning
 		return true
 	}
 
@@ -1068,17 +1054,14 @@ func setDefaultModelForAgent(agent AgentName) bool {
 		var model models.ModelID
 		maxTokens := int64(5000)
 
-		if agent == AgentTitle {
+		if agent == string(AgentTitle) {
 			model = models.VertexAIGemini25Flash
 			maxTokens = 80
 		} else {
 			model = models.VertexAIGemini25
 		}
 
-		cfg.Agents[agent] = Agent{
-			Model:     model,
-			MaxTokens: maxTokens,
-		}
+		setModel(model, maxTokens, "")
 		return true
 	}
 
@@ -1150,7 +1133,8 @@ func UpdateAgentModel(agentName AgentName, modelID models.ModelID) error {
 		panic("config not loaded")
 	}
 
-	existingAgentCfg := cfg.Agents[agentName]
+	name := string(agentName)
+	existingAgentCfg := cfg.Agents[name]
 
 	model, ok := models.SupportedModels[modelID]
 	if !ok {
@@ -1162,24 +1146,22 @@ func UpdateAgentModel(agentName AgentName, modelID models.ModelID) error {
 		maxTokens = model.DefaultMaxTokens
 	}
 
-	newAgentCfg := Agent{
-		Model:           modelID,
-		MaxTokens:       maxTokens,
-		ReasoningEffort: existingAgentCfg.ReasoningEffort,
-	}
-	cfg.Agents[agentName] = newAgentCfg
+	newAgentCfg := existingAgentCfg
+	newAgentCfg.Model = string(modelID)
+	newAgentCfg.MaxTokens = maxTokens
+	cfg.Agents[name] = newAgentCfg
 
-	if err := validateAgent(cfg, agentName, newAgentCfg); err != nil {
+	if err := validateAgent(cfg, name, newAgentCfg); err != nil {
 		// revert config update on failure
-		cfg.Agents[agentName] = existingAgentCfg
+		cfg.Agents[name] = existingAgentCfg
 		return fmt.Errorf("failed to update agent model: %w", err)
 	}
 
 	return updateCfgFile(func(config *Config) {
 		if config.Agents == nil {
-			config.Agents = make(map[AgentName]Agent)
+			config.Agents = make(map[string]AgentDefinition)
 		}
-		config.Agents[agentName] = newAgentCfg
+		config.Agents[name] = newAgentCfg
 	})
 }
 
@@ -1191,15 +1173,15 @@ func AgentModelID(name AgentName) models.ModelID {
 	if cfg == nil {
 		return ""
 	}
-	if agentCfg, ok := cfg.Agents[name]; ok && agentCfg.Model != "" {
-		return agentCfg.Model
+	if agentCfg, ok := cfg.Agents[string(name)]; ok && agentCfg.Model != "" {
+		return models.ModelID(agentCfg.Model)
 	}
 	if def, ok := agentdef.Get().Get(string(name)); ok && def.Model != "" {
 		if id, ok := models.ResolveModelID(def.Model); ok {
 			return id
 		}
 	}
-	return cfg.Agents[AgentCoder].Model
+	return models.ModelID(cfg.Agents[string(AgentCoder)].Model)
 }
 
 // UpdateTheme updates the theme in the configuration and writes it to the config file.

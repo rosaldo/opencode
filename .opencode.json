@@ -1,10 +1,14 @@
 {
   "$schema": "./opencode-schema.json",
-  "agent": {
+  "agents": {
     "security-auditor": {
       "description": "Auditoria de segurança do código",
       "mode": "subagent",
-      "prompt": "Você é um auditor de segurança. Revise o código buscando vulnerabilidades."
+      "system": "Você é um auditor de segurança. Revise o código buscando vulnerabilidades.",
+      "permissions": [
+        { "action": "shell", "effect": "deny" },
+        { "action": "edit", "effect": "ask" }
+      ]
     }
   },
   "lsp": {

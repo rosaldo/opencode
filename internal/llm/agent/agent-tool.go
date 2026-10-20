@@ -284,7 +284,7 @@ func NewAgentTool(caller *agentdef.Definition, deps AgentToolDeps) tools.BaseToo
 	return &agentTool{caller: caller, policy: policy, deps: deps, chain: deps.DelegationChain}
 }
 
-func callerPermissions(caller *agentdef.Definition) map[string]any {
+func callerPermissions(caller *agentdef.Definition) []agentdef.PermissionRule {
 	if caller == nil {
 		return nil
 	}

@@ -16,12 +16,17 @@ func writeFile(t *testing.T, path, content string) {
 	}
 }
 
+// defs is a Source backed by a fixed slice, for tests.
+type defs []*Definition
+
+func (d defs) Definitions() ([]*Definition, error) { return d, nil }
+
 func TestLoadDiscoversAgentDirs(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "agent", "review.md"), "---\ndescription: review\nmode: subagent\n---\nReview body")
 	writeFile(t, filepath.Join(dir, "agents", "docs.md"), "Docs body only")
 
-	reg, err := Load(Options{GlobalDirs: []string{dir}})
+	reg, err := Load(FileSource{Dir: dir})
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
@@ -50,7 +55,7 @@ func TestFrontmatterNameOverridesFile(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "agent", "file.md"), "---\nname: custom\n---\nbody")
 
-	reg, _ := Load(Options{GlobalDirs: []string{dir}})
+	reg, _ := Load(FileSource{Dir: dir})
 	if _, ok := reg.Get("custom"); !ok {
 		t.Fatal("expected custom name from frontmatter")
 	}
@@ -66,7 +71,7 @@ func TestTeamComesFromDirectoryOrFrontmatter(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "agent", "security", "deep", "nested.md"), "nested path")
 	writeFile(t, filepath.Join(dir, "agents", "override.md"), "---\nteam: ops\n---\nfrontmatter team wins")
 
-	reg, err := Load(Options{GlobalDirs: []string{dir}})
+	reg, err := Load(FileSource{Dir: dir})
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
@@ -94,11 +99,11 @@ func TestPrecedenceProjectOverGlobalOverBuiltin(t *testing.T) {
 	writeFile(t, filepath.Join(global, "agent", "coder.md"), "---\ndescription: global\n---\ng")
 	writeFile(t, filepath.Join(project, "agent", "coder.md"), "---\ndescription: project\n---\np")
 
-	reg, err := Load(Options{
-		GlobalDirs: []string{global},
-		ProjectDir: project,
-		Builtins:   []*Definition{{Name: "coder", Description: "builtin", Mode: ModePrimary, Builtin: true}},
-	})
+	reg, err := Load(
+		defs{{Name: "coder", Description: "builtin", Mode: ModePrimary, Builtin: true}},
+		FileSource{Dir: global},
+		FileSource{Dir: project},
+	)
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
@@ -116,7 +121,7 @@ func TestPromptIsLazy(t *testing.T) {
 	path := filepath.Join(dir, "agent", "lazy.md")
 	writeFile(t, path, "---\ndescription: lazy\n---\nHello lazy prompt")
 
-	reg, err := Load(Options{GlobalDirs: []string{dir}})
+	reg, err := Load(FileSource{Dir: dir})
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
@@ -135,7 +140,7 @@ func TestPromptReturnsBody(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "agent", "greeter.md"), "---\ndescription: greeter\n---\nYou greet people.")
 
-	reg, _ := Load(Options{GlobalDirs: []string{dir}})
+	reg, _ := Load(FileSource{Dir: dir})
 	def, _ := reg.Get("greeter")
 	body, err := def.Prompt()
 	if err != nil {
@@ -151,7 +156,7 @@ func TestInvalidFrontmatterIsSkipped(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "agent", "bad.md"), "---\nmode: [not, a, string\n---\nbody")
 	writeFile(t, filepath.Join(dir, "agent", "good.md"), "---\ndescription: ok\n---\nbody")
 
-	reg, err := Load(Options{GlobalDirs: []string{dir}})
+	reg, err := Load(FileSource{Dir: dir})
 	if err != nil {
 		t.Fatalf("load should not fail: %v", err)
 	}
@@ -191,42 +196,125 @@ func TestSplitFrontmatter(t *testing.T) {
 	}
 }
 
-func TestConfigDefinitionsWinAtSameLevel(t *testing.T) {
+func TestJSONSourceWinsAtSameLevel(t *testing.T) {
 	global := t.TempDir()
 	project := t.TempDir()
 	// Both levels have a markdown agent with the same name as the JSON def.
 	writeFile(t, filepath.Join(global, "agent", "audit.md"), "---\ndescription: md-global\n---\nbody")
 	writeFile(t, filepath.Join(project, "agent", "audit.md"), "---\ndescription: md-project\n---\nbody")
 
-	reg, err := Load(Options{
-		GlobalDirs: []string{global},
-		GlobalDefinitions: []*Definition{
-			{Name: "audit", Description: "json-global", Mode: ModeSubagent},
-		},
-		ProjectDir: project,
-	})
+	globalJSON := JSONSource{Agents: map[string]AgentConfig{
+		"audit": {Description: "json-global", Mode: "subagent", System: "g"},
+	}}
+	projectJSON := JSONSource{Agents: map[string]AgentConfig{
+		"audit": {Description: "json-project", Mode: "subagent", System: "p"},
+	}}
+
+	// Global markdown < global JSON < project markdown < project JSON.
+	reg, err := Load(
+		FileSource{Dir: global},
+		globalJSON,
+		FileSource{Dir: project},
+	)
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
 	audit, _ := reg.Get("audit")
-	// Project markdown outranks global JSON.
 	if audit.Description != "md-project" {
 		t.Fatalf("description = %q, want md-project", audit.Description)
 	}
 
-	reg, err = Load(Options{
-		GlobalDirs: []string{global},
-		ProjectDir: project,
-		ProjectDefinitions: []*Definition{
-			{Name: "audit", Description: "json-project", Mode: ModeSubagent},
-		},
-	})
+	reg, err = Load(
+		FileSource{Dir: project},
+		projectJSON,
+	)
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
 	audit, _ = reg.Get("audit")
-	// Project JSON outranks project markdown.
 	if audit.Description != "json-project" {
 		t.Fatalf("description = %q, want json-project", audit.Description)
+	}
+}
+
+func TestJSONSourceResolvesPrompt(t *testing.T) {
+	src := JSONSource{
+		Agents: map[string]AgentConfig{
+			"helper": {Description: "h", System: "{file:./p.txt}"},
+		},
+		BaseDir: "/base",
+		ResolvePrompt: func(prompt, baseDir string) string {
+			return baseDir + "|" + prompt
+		},
+	}
+	reg, err := Load(src)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	def, _ := reg.Get("helper")
+	body, _ := def.Prompt()
+	if body != "/base|{file:./p.txt}" {
+		t.Fatalf("prompt = %q", body)
+	}
+}
+
+// TestMarkdownAndJSONProduceSameDefinition proves the two sources are truly
+// interchangeable: a markdown file and a JSON "agents" entry that describe the
+// same agent yield equivalent definitions.
+func TestMarkdownAndJSONProduceSameDefinition(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "agent", "auditor.md"), "---\n"+
+		"description: security auditor\n"+
+		"mode: subagent\n"+
+		"model: anthropic/claude-sonnet-4\n"+
+		"temperature: 0.2\n"+
+		"tools:\n  write: false\n"+
+		"permissions:\n  - action: shell\n    effect: deny\n"+
+		"team: security\n"+
+		"color: '#ff0000'\n"+
+		"---\nYou audit code.")
+
+	mdReg, err := Load(FileSource{Dir: dir})
+	if err != nil {
+		t.Fatalf("md load: %v", err)
+	}
+	md, _ := mdReg.Get("auditor")
+	mdBody, _ := md.Prompt()
+
+	jsonReg, err := Load(JSONSource{
+		Agents: map[string]AgentConfig{
+			"auditor": {
+				Description: "security auditor",
+				Mode:        "subagent",
+				Model:       "anthropic/claude-sonnet-4",
+				Temperature: 0.2,
+				Tools:       map[string]bool{"write": false},
+				Permissions: []PermissionRule{{Action: "shell", Effect: "deny"}},
+				Team:        "security",
+				Color:       "#ff0000",
+				System:      "You audit code.",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("json load: %v", err)
+	}
+	js, _ := jsonReg.Get("auditor")
+	jsBody, _ := js.Prompt()
+
+	if md.Name != js.Name || md.Description != js.Description || md.Mode != js.Mode ||
+		md.Model != js.Model || md.Temperature != js.Temperature || md.Team != js.Team ||
+		md.Color != js.Color {
+		t.Fatalf("definitions differ:\nmd  = %+v\njson= %+v", md, js)
+	}
+	if len(md.Permissions) != 1 || md.Permissions[0].Action != js.Permissions[0].Action ||
+		md.Permissions[0].Effect != js.Permissions[0].Effect {
+		t.Fatalf("permissions differ: md=%+v json=%+v", md.Permissions, js.Permissions)
+	}
+	if md.Tools["write"] != js.Tools["write"] {
+		t.Fatalf("tools differ: md=%v json=%v", md.Tools, js.Tools)
+	}
+	if mdBody != jsBody {
+		t.Fatalf("prompts differ: md=%q json=%q", mdBody, jsBody)
 	}
 }
