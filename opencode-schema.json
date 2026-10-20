@@ -569,6 +569,57 @@
       },
       "type": "object"
     },
+    "commands": {
+      "additionalProperties": {
+        "properties": {
+          "agent": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "subtask": {
+            "type": "boolean"
+          },
+          "template": {
+            "type": "string"
+          },
+          "variant": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "template"
+        ],
+        "type": "object"
+      },
+      "description": "Named slash command definitions",
+      "type": "object"
+    },
+    "compaction": {
+      "description": "Conversation compaction behaviour",
+      "properties": {
+        "auto": {
+          "default": true,
+          "type": "boolean"
+        },
+        "buffer": {
+          "type": "integer"
+        },
+        "keep": {
+          "properties": {
+            "tokens": {
+              "type": "integer"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
     "contextPaths": {
       "default": [
         ".github/copilot-instructions.md",
@@ -620,6 +671,50 @@
     "default_agent": {
       "description": "Primary agent selected at boot (falls back to \"coder\")",
       "type": "string"
+    },
+    "formatter": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "additionalProperties": {
+            "properties": {
+              "command": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "disabled": {
+                "type": "boolean"
+              },
+              "environment": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              "extensions": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "type": "object"
+          },
+          "type": "object"
+        }
+      ],
+      "description": "Enable built-in formatters or configure formatter overrides"
+    },
+    "instructions": {
+      "description": "Additional paths or URLs supplying ambient instructions",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
     },
     "lsp": {
       "additionalProperties": {
@@ -703,6 +798,29 @@
         "type": "object"
       },
       "description": "Model Control Protocol server configurations",
+      "type": "object"
+    },
+    "media": {
+      "description": "Media processing configuration",
+      "properties": {
+        "image": {
+          "properties": {
+            "auto_resize": {
+              "type": "boolean"
+            },
+            "max_base64_bytes": {
+              "type": "integer"
+            },
+            "max_height": {
+              "type": "integer"
+            },
+            "max_width": {
+              "type": "integer"
+            }
+          },
+          "type": "object"
+        }
+      },
       "type": "object"
     },
     "model": {
@@ -791,6 +909,33 @@
       ],
       "type": "string"
     },
+    "permissions": {
+      "description": "Ordered global tool permission rules; the first matching rule wins",
+      "items": {
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "effect": {
+            "enum": [
+              "allow",
+              "ask",
+              "deny"
+            ],
+            "type": "string"
+          },
+          "resource": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "effect"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
     "providers": {
       "additionalProperties": {
         "description": "Provider configuration",
@@ -823,6 +968,82 @@
       },
       "description": "LLM provider configurations",
       "type": "object"
+    },
+    "references": {
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "properties": {
+              "branch": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "hidden": {
+                "type": "boolean"
+              },
+              "repository": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "repository"
+            ],
+            "type": "object"
+          },
+          {
+            "properties": {
+              "description": {
+                "type": "string"
+              },
+              "hidden": {
+                "type": "boolean"
+              },
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "description": "Named local directories or Git repositories available as external context",
+      "type": "object"
+    },
+    "skills": {
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "properties": {
+            "paths": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "urls": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        }
+      ],
+      "description": "Additional paths or URLs to discover skills from"
     },
     "small_model": {
       "description": "Model for small tasks (session title, summarisation); applied unless those agents set their own model",
@@ -910,6 +1131,26 @@
       ],
       "type": "string"
     },
+    "snapshots": {
+      "description": "Enable snapshots used for undo and revert behaviour",
+      "type": "boolean"
+    },
+    "tool_output": {
+      "description": "Tool output truncation thresholds",
+      "properties": {
+        "max_bytes": {
+          "default": 51200,
+          "description": "Maximum bytes before truncation",
+          "type": "integer"
+        },
+        "max_lines": {
+          "default": 2000,
+          "description": "Maximum lines before truncation",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
     "tui": {
       "description": "Terminal User Interface configuration",
       "properties": {
@@ -932,9 +1173,70 @@
       },
       "type": "object"
     },
+    "update": {
+      "description": "Disable updates, notify when one is available, or install automatically",
+      "enum": [
+        "disable",
+        "notify",
+        "auto"
+      ],
+      "type": "string"
+    },
+    "username": {
+      "description": "Username displayed in conversations and used for telemetry identity",
+      "type": "string"
+    },
+    "warming": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "object"
+        }
+      ],
+      "description": "Keep recently active sessions warm with transient model requests"
+    },
+    "watcher": {
+      "description": "Filesystem watcher configuration",
+      "properties": {
+        "ignore": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
     "wd": {
       "description": "Working directory for the application",
       "type": "string"
+    },
+    "websearch": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "properties": {
+            "provider": {
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      ],
+      "description": "Web search provider selection"
+    },
+    "worktree": {
+      "description": "Directory defaults for local worktree creation",
+      "properties": {
+        "directory": {
+          "type": "string"
+        }
+      },
+      "type": "object"
     }
   },
   "title": "OpenCode Configuration",

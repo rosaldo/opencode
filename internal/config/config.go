@@ -117,6 +117,27 @@ type Config struct {
 	TUI            TUIConfig   `json:"tui"`
 	Shell          ShellConfig `json:"shell,omitempty"`
 	AutoCompact    bool        `json:"autoCompact,omitempty"`
+
+	// ---- Auxiliary v2 keys (Spec 11c): parsed/validated, behaviour lives in
+	// the owning spec. They are decoded from the raw merged map (aux.go) so their
+	// polymorphic JSON shapes are honoured; viper must skip them.
+
+	Instructions []string                 `json:"instructions,omitempty" mapstructure:"-"`
+	Commands     map[string]Command       `json:"commands,omitempty" mapstructure:"-"`
+	References   map[string]Reference     `json:"references,omitempty" mapstructure:"-"`
+	Skills       SkillPaths               `json:"skills,omitempty" mapstructure:"-"`
+	Formatter    FormatterConfig          `json:"formatter,omitempty" mapstructure:"-"`
+	Watcher      WatcherConfig            `json:"watcher,omitempty" mapstructure:"-"`
+	Snapshots    *bool                    `json:"snapshots,omitempty" mapstructure:"-"`
+	Media        MediaConfig              `json:"media,omitempty" mapstructure:"-"`
+	ToolOutput   ToolOutputConfig         `json:"tool_output,omitempty" mapstructure:"-"`
+	Websearch    WebsearchConfig          `json:"websearch,omitempty" mapstructure:"-"`
+	Compaction   CompactionConfig         `json:"compaction,omitempty" mapstructure:"-"`
+	Warming      WarmingConfig            `json:"warming,omitempty" mapstructure:"-"`
+	Worktree     WorktreeConfig           `json:"worktree,omitempty" mapstructure:"-"`
+	Update       string                   `json:"update,omitempty" mapstructure:"-"`
+	Username     string                   `json:"username,omitempty" mapstructure:"-"`
+	Permissions  []agentdef.PermissionRule `json:"permissions,omitempty" mapstructure:"-"`
 }
 
 // Application constants
@@ -166,13 +187,20 @@ func Load(workingDir string, debug bool) (*Config, error) {
 	// Read every config file (v2 opencode.json(c) + legacy .opencode.json) in
 	// precedence order, applying JSONC and string interpolation, then feed the
 	// merged map to viper (Spec 11a).
-	viper.MergeConfigMap(readConfigMaps(workingDir))
+	merged := readConfigMaps(workingDir)
+	viper.MergeConfigMap(merged)
 
 	setProviderDefaults()
 
 	// Apply configuration to the struct
 	if err := viper.Unmarshal(cfg); err != nil {
 		return cfg, fmt.Errorf("failed to unmarshal config: %w", err)
+	}
+
+	// Auxiliary v2 keys (polymorphic JSON shapes) are decoded from the raw
+	// merged map so their custom UnmarshalJSON is honoured (Spec 11c).
+	if err := applyAuxConfig(merged); err != nil {
+		return cfg, fmt.Errorf("failed to load auxiliary config: %w", err)
 	}
 
 	applyDefaultValues()

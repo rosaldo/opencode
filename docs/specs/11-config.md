@@ -96,6 +96,19 @@ subdivididas em 11b/11c.
 
 ## Status
 
+### 11c — chaves auxiliares — Verificado
+
+- `internal/config/aux.go`: tipos e defaults das chaves auxiliares v2 — `instructions`, `commands`,
+  `references`, `skills`, `formatter`, `watcher`, `snapshots`, `media`, `tool_output`, `websearch`,
+  `compaction`, `warming`, `worktree`, `update`, `username`, `permissions`.
+- Formas polimórficas (`bool`|objeto em `formatter`/`websearch`/`warming`; `string`|objeto em
+  `references`; array|objeto em `skills`) resolvidas via `UnmarshalJSON` customizado; campos com
+  `mapstructure:"-"` para o viper ignorá-los e `applyAuxConfig` decodificar do mapa mesclado (json).
+- Defaults: `tool_output.max_lines=2000`, `max_bytes=51200`, `compaction.auto=true`. Validação
+  leniente (`update` inválido descartado; `command` sem template e `reference` vazio removidos).
+- Interpolação `{env:}`/`{file:}` aplica-se a estas strings (o mapa mesclado é interpolado antes).
+- `cmd/schema/main.go` emite todas as chaves; `opencode-schema.json` regenerado (determinístico).
+
 ### 11b — chaves núcleo (`model`, `small_model`, `default_agent`) — Verificado
 
 - `Config.Model` (`model`) e `Config.SmallModel` (`small_model`): `model` define o modelo do

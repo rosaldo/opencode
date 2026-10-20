@@ -360,6 +360,172 @@ func generateSchema() map[string]any {
 		"enum":        modelEnum,
 	}
 
+	// Auxiliary v2 keys (Spec 11c): parsed and validated here; behaviour lives in
+	// the owning spec.
+	schema["properties"].(map[string]any)["instructions"] = map[string]any{
+		"type":        "array",
+		"description": "Additional paths or URLs supplying ambient instructions",
+		"items":       map[string]any{"type": "string"},
+	}
+	schema["properties"].(map[string]any)["commands"] = map[string]any{
+		"type":        "object",
+		"description": "Named slash command definitions",
+		"additionalProperties": map[string]any{
+			"type":     "object",
+			"required": []string{"template"},
+			"properties": map[string]any{
+				"template":    map[string]any{"type": "string"},
+				"description": map[string]any{"type": "string"},
+				"agent":       map[string]any{"type": "string"},
+				"model":       map[string]any{"type": "string"},
+				"variant":     map[string]any{"type": "string"},
+				"subtask":     map[string]any{"type": "boolean"},
+			},
+		},
+	}
+	schema["properties"].(map[string]any)["references"] = map[string]any{
+		"type":        "object",
+		"description": "Named local directories or Git repositories available as external context",
+		"additionalProperties": map[string]any{
+			"anyOf": []map[string]any{
+				{"type": "string"},
+				{
+					"type":     "object",
+					"required": []string{"repository"},
+					"properties": map[string]any{
+						"repository":  map[string]any{"type": "string"},
+						"branch":      map[string]any{"type": "string"},
+						"description": map[string]any{"type": "string"},
+						"hidden":      map[string]any{"type": "boolean"},
+					},
+				},
+				{
+					"type":     "object",
+					"required": []string{"path"},
+					"properties": map[string]any{
+						"path":        map[string]any{"type": "string"},
+						"description": map[string]any{"type": "string"},
+						"hidden":      map[string]any{"type": "boolean"},
+					},
+				},
+			},
+		},
+	}
+	schema["properties"].(map[string]any)["skills"] = map[string]any{
+		"description": "Additional paths or URLs to discover skills from",
+		"anyOf": []map[string]any{
+			{"type": "array", "items": map[string]any{"type": "string"}},
+			{
+				"type": "object",
+				"properties": map[string]any{
+					"paths": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+					"urls":  map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+				},
+			},
+		},
+	}
+	schema["properties"].(map[string]any)["formatter"] = map[string]any{
+		"description": "Enable built-in formatters or configure formatter overrides",
+		"anyOf": []map[string]any{
+			{"type": "boolean"},
+			{
+				"type": "object",
+				"additionalProperties": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"disabled":    map[string]any{"type": "boolean"},
+						"command":     map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+						"environment": map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}},
+						"extensions":  map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+					},
+				},
+			},
+		},
+	}
+	schema["properties"].(map[string]any)["watcher"] = map[string]any{
+		"type":        "object",
+		"description": "Filesystem watcher configuration",
+		"properties": map[string]any{
+			"ignore": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+		},
+	}
+	schema["properties"].(map[string]any)["snapshots"] = map[string]any{
+		"type":        "boolean",
+		"description": "Enable snapshots used for undo and revert behaviour",
+	}
+	schema["properties"].(map[string]any)["media"] = map[string]any{
+		"type":        "object",
+		"description": "Media processing configuration",
+		"properties": map[string]any{
+			"image": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"auto_resize":      map[string]any{"type": "boolean"},
+					"max_width":        map[string]any{"type": "integer"},
+					"max_height":       map[string]any{"type": "integer"},
+					"max_base64_bytes": map[string]any{"type": "integer"},
+				},
+			},
+		},
+	}
+	schema["properties"].(map[string]any)["tool_output"] = map[string]any{
+		"type":        "object",
+		"description": "Tool output truncation thresholds",
+		"properties": map[string]any{
+			"max_lines": map[string]any{"type": "integer", "description": "Maximum lines before truncation", "default": 2000},
+			"max_bytes": map[string]any{"type": "integer", "description": "Maximum bytes before truncation", "default": 51200},
+		},
+	}
+	schema["properties"].(map[string]any)["websearch"] = map[string]any{
+		"description": "Web search provider selection",
+		"anyOf": []map[string]any{
+			{"type": "boolean"},
+			{"type": "object", "properties": map[string]any{"provider": map[string]any{"type": "string"}}},
+		},
+	}
+	schema["properties"].(map[string]any)["compaction"] = map[string]any{
+		"type":        "object",
+		"description": "Conversation compaction behaviour",
+		"properties": map[string]any{
+			"auto":   map[string]any{"type": "boolean", "default": true},
+			"keep":   map[string]any{"type": "object", "properties": map[string]any{"tokens": map[string]any{"type": "integer"}}},
+			"buffer": map[string]any{"type": "integer"},
+		},
+	}
+	schema["properties"].(map[string]any)["warming"] = map[string]any{
+		"description": "Keep recently active sessions warm with transient model requests",
+		"anyOf":       []map[string]any{{"type": "boolean"}, {"type": "object"}},
+	}
+	schema["properties"].(map[string]any)["worktree"] = map[string]any{
+		"type":        "object",
+		"description": "Directory defaults for local worktree creation",
+		"properties": map[string]any{
+			"directory": map[string]any{"type": "string"},
+		},
+	}
+	schema["properties"].(map[string]any)["update"] = map[string]any{
+		"type":        "string",
+		"description": "Disable updates, notify when one is available, or install automatically",
+		"enum":        []string{"disable", "notify", "auto"},
+	}
+	schema["properties"].(map[string]any)["username"] = map[string]any{
+		"type":        "string",
+		"description": "Username displayed in conversations and used for telemetry identity",
+	}
+	schema["properties"].(map[string]any)["permissions"] = map[string]any{
+		"type":        "array",
+		"description": "Ordered global tool permission rules; the first matching rule wins",
+		"items": map[string]any{
+			"type":     "object",
+			"required": []string{"action", "effect"},
+			"properties": map[string]any{
+				"action":   map[string]any{"type": "string"},
+				"resource": map[string]any{"type": "string"},
+				"effect":   map[string]any{"type": "string", "enum": []string{"allow", "ask", "deny"}},
+			},
+		},
+	}
+
 	// Add LSP configuration
 	schema["properties"].(map[string]any)["lsp"] = map[string]any{
 		"type":        "object",

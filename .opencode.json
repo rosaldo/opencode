@@ -18,5 +18,7 @@
     "gopls": {
       "command": "gopls"
     }
-  }
+  },
+  "instructions": ["AGENTS.md"],
+  "tool_output": { "max_lines": 2000, "max_bytes": 51200 }
 }
