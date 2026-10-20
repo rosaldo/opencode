@@ -35,7 +35,7 @@ Hoje existem **4 agentes fixos** (`coder`, `summarizer`, `task`, `title`) — en
 | 1 | [01-registry-loader.md](01-registry-loader.md) | Pacote `agentdef`, loader de `.md`, prompt lazy, integração no `createAgentProvider` | Verificado | — |
 | 2 | [02-tools-permissions.md](02-tools-permissions.md) | Tools e permissões por agente (`ToolsForDefinition`) | Verificado | 01 |
 | 3 | [03-subagents.md](03-subagents.md) | Subagentes por nome na tool `agent` | Verificado | 01, 02 |
-| 4 | [04-tui-switcher.md](04-tui-switcher.md) | Switcher (Tab) + `@`-mention, `AgentManager` | Em andamento (4a Verificado; 4b pendente) | 01, 02, 03 |
+| 4 | [04-tui-switcher.md](04-tui-switcher.md) | Switcher (Tab) + `@`-mention, `AgentManager` | Verificado (4a + 4b) | 01, 02, 03 |
 | 5 | [05-config-compat.md](05-config-compat.md) | Config JSON (`agent`, `defaultAgent`), schema, validação | Planejado | 01 |
 
 Status possíveis: `Planejado` → `Em andamento` → `Implementado` → `Verificado`.
@@ -77,6 +77,15 @@ Status possíveis: `Planejado` → `Em andamento` → `Implementado` → `Verifi
   aplicado ao agente ativo, title/summarize generalizados para primários.
   Pendente (4b): `@`-mention de subagentes. Desvios documentados em
   `docs/specs/04-tui-switcher.md` (seção "Implementação (fase 4a)").
+- **Verificação (fase 4b)**: `go build ./...` OK; `go test ./...` OK. Novo teste:
+  `internal/tui/components/chat/mention_test.go` (`splitMention`: leading, meio de
+  frase, só menção, nome com ponto/underscore, sem menção, e-mail não casando,
+  primeira menção vence). Entregue: `@nome` na mensagem valida contra o registry
+  (`SubagentLookup`), roda o agente numa **sessão filha** (`AgentManager.RunSubagent`
+  via `CreateTaskSession`) e abre a sessão filha para exibir a saída; envio normal e
+  `Ctrl+E` cobertos; menção desconhecida é enviada como prosa. Autocomplete textual
+  do `@` **não** implementado (o `@` já é gatilho do diálogo de arquivos; fusão de
+  completions ficou fora do escopo) — documentado no spec 04.
 ## Mapa de arquivos (existentes que serão tocados)
 
 - `internal/config/config.go` — enum/struct `Agent`, `Agents`, `Validate`, `Load`. (Specs 1, 5)

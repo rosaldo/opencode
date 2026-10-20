@@ -2,7 +2,9 @@ package chat
 
 import (
 	"fmt"
+	"regexp"
 	"sort"
+	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
@@ -17,6 +19,32 @@ import (
 type SendMsg struct {
 	Text        string
 	Attachments []message.Attachment
+	// MentionedAgent is set when the message text named a subagent with
+	// "@name"; it routes the turn to that agent in a child session instead of
+	// the active primary agent.
+	MentionedAgent string
+}
+
+// mentionPattern matches a leading or whitespace-preceded "@name" token. Names
+// follow the agent-name charset (letters, digits, dash, underscore, dot).
+var mentionPattern = regexp.MustCompile(`(^|\s)@([A-Za-z0-9._-]+)`)
+
+// splitMention extracts the first "@name" mention from text. It returns the
+// cleaned message (mention removed, whitespace collapsed at the start) and the
+// mentioned name, or an empty name when there is none. Only the first mention
+// is honored; that keeps the routing unambiguous.
+func splitMention(text string) (clean string, name string) {
+	loc := mentionPattern.FindStringSubmatchIndex(text)
+	if loc == nil {
+		return text, ""
+	}
+	name = text[loc[4]:loc[5]]
+	clean = strings.TrimSpace(text[:loc[0]] + text[loc[1]:])
+	if clean == "" {
+		// Keep the mention text as the prompt when it was the whole message.
+		clean = strings.TrimSpace(text[loc[0]:loc[1]])
+	}
+	return clean, name
 }
 
 type SessionSelectedMsg = session.Session
@@ -138,4 +166,3 @@ func cwd(width int) string {
 		Width(width).
 		Render(cwd)
 }
-

@@ -108,9 +108,11 @@ func (m *editorCmp) openEditor() tea.Cmd {
 		os.Remove(tmpfile.Name())
 		attachments := m.attachments
 		m.attachments = nil
+		clean, mentioned := m.mention(string(content))
 		return SendMsg{
-			Text:        string(content),
-			Attachments: attachments,
+			Text:           clean,
+			Attachments:    attachments,
+			MentionedAgent: mentioned,
 		}
 	})
 }
@@ -132,12 +134,29 @@ func (m *editorCmp) send() tea.Cmd {
 	if value == "" {
 		return nil
 	}
+	clean, mentioned := m.mention(value)
 	return tea.Batch(
 		util.CmdHandler(SendMsg{
-			Text:        value,
-			Attachments: attachments,
+			Text:           clean,
+			Attachments:    attachments,
+			MentionedAgent: mentioned,
 		}),
 	)
+}
+
+// mention extracts a leading "@name" token when it refers to a registered,
+// enabled agent, returning the cleaned text and the matched name. A mention of
+// an unknown name is left in the text untouched so it is sent as ordinary
+// prose instead of being silently dropped.
+func (m *editorCmp) mention(text string) (string, string) {
+	clean, name := splitMention(text)
+	if name == "" {
+		return text, ""
+	}
+	if _, ok := m.app.Agents.SubagentLookup(name); !ok {
+		return text, ""
+	}
+	return clean, name
 }
 
 func (m *editorCmp) Update(msg tea.Msg) (tea.Model, tea.Cmd) {

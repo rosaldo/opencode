@@ -156,3 +156,39 @@ pendente.
 - `internal/tui/components/dialog/agents_test.go`: filtro vazio mantém todos; filtro
   por nome; por descrição; case-insensitive; ranking (match de nome antes); sem
   match zera a lista; seleção recalculada ao estreitar o filtro.
+
+## Implementação (fase 4b)
+
+Entregue e verificado (`go build ./...` + `go test ./...`).
+
+### `@`-mention de subagentes
+
+- **Detecção** (`internal/tui/components/chat/chat.go`): `splitMention(text)` extrai o
+  primeiro token `@nome` (`mentionPattern`, charset `[A-Za-z0-9._-]`, precedido por
+  início ou espaço — e-mails como `a@b.com` não casam) e devolve o texto limpo
+  (menção removida). Se a mensagem for só a menção, o texto limpo mantém `@nome`.
+- **Validação** (`editor.go`): `editorCmp.mention` só roteia quando o nome existe no
+  registry e não está disabled (`App.Agents.SubagentLookup`); menção desconhecida
+  permanece no texto e é enviada como prosa (não é engolida silenciosamente).
+  Aplica-se ao envio normal e ao `Ctrl+E` (editor externo).
+- **Roteamento** (`internal/app/agent_manager.go`): `RunSubagent(ctx, parentID, name,
+  prompt)` cria uma **sessão filha** via `CreateTaskSession` (com `parent_session_id`
+  apontando para a sessão atual) e roda o agente nomeado ali — a sessão fica navegável
+  pelo vínculo de parentesco. `SubagentLookup` centraliza a validação.
+- **UI** (`internal/tui/page/chat.go`): `chat.SendMsg` ganhou `MentionedAgent`;
+  `sendMessage` roteia para `RunSubagent` quando presente, reporta
+  `Running @nome in a sub-session` e **abre a sessão filha** (`chat.SessionSelectedMsg`)
+  para que a saída apareça. Os eventos da sessão filha chegam pelo fan-in do manager e
+  são renderizados por `messagesCmp` (recarrega via `SetSession`).
+- **Autocomplete textual do `@`**: **não** implementado nesta sub-fase. O `@` já é o
+  gatilho do diálogo de arquivos/pastas existente (`keyMap.ShowCompletionDialog` na
+  página de chat); sobrepor uma segunda lista no mesmo caractere exigiria uma fusão de
+  completions fora do escopo. A menção funciona por digitação direta e a validação
+  contra o registry. Fica como melhoria futura.
+
+### Testes
+
+- `internal/tui/components/chat/mention_test.go`: `splitMention` (leading, meio de
+  frase, só menção, nome com ponto/underscore, sem menção, e-mail não é menção,
+  primeira de duas vence). `RunSubagent` não tem teste de integração (cria sessão no
+  DB e exige provider configurado — mesma limitação das fases 3/4a).

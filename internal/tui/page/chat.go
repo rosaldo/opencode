@@ -67,7 +67,7 @@ func (p *chatPage) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case dialog.CompletionDialogCloseMsg:
 		p.showCompletionDialog = false
 	case chat.SendMsg:
-		cmd := p.sendMessage(msg.Text, msg.Attachments)
+		cmd := p.sendMessage(msg.Text, msg.MentionedAgent, msg.Attachments)
 		if cmd != nil {
 			return p, cmd
 		}
@@ -88,7 +88,7 @@ func (p *chatPage) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		// Handle custom command execution
-		cmd := p.sendMessage(content, nil)
+		cmd := p.sendMessage(content, "", nil)
 		if cmd != nil {
 			return p, cmd
 		}
@@ -152,7 +152,7 @@ func (p *chatPage) clearSidebar() tea.Cmd {
 	return p.layout.ClearRightPanel()
 }
 
-func (p *chatPage) sendMessage(text string, attachments []message.Attachment) tea.Cmd {
+func (p *chatPage) sendMessage(text string, mentionedAgent string, attachments []message.Attachment) tea.Cmd {
 	var cmds []tea.Cmd
 	if p.session.ID == "" {
 		session, err := p.app.Sessions.Create(context.Background(), "New Session")
@@ -166,6 +166,19 @@ func (p *chatPage) sendMessage(text string, attachments []message.Attachment) te
 			cmds = append(cmds, cmd)
 		}
 		cmds = append(cmds, util.CmdHandler(chat.SessionSelectedMsg(session)))
+	}
+
+	// An @-mention routes the turn to the named agent in a child session
+	// instead of the active primary agent.
+	if mentionedAgent != "" {
+		child, _, err := p.app.Agents.RunSubagent(context.Background(), p.session.ID, mentionedAgent, text)
+		if err != nil {
+			return util.ReportError(err)
+		}
+		cmds = append(cmds, util.ReportInfo("Running @"+mentionedAgent+" in a sub-session"))
+		// Open the child session so its messages are visible.
+		cmds = append(cmds, util.CmdHandler(chat.SessionSelectedMsg(child)))
+		return tea.Batch(cmds...)
 	}
 
 	_, err := p.app.Agents.Run(context.Background(), p.session.ID, text, attachments...)

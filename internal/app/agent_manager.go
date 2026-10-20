@@ -11,6 +11,9 @@ import (
 	"github.com/opencode-ai/opencode/internal/logging"
 	"github.com/opencode-ai/opencode/internal/message"
 	"github.com/opencode-ai/opencode/internal/pubsub"
+	"github.com/opencode-ai/opencode/internal/session"
+
+	"github.com/google/uuid"
 )
 
 // AgentManager owns the set of user-selectable agents. It lazily instantiates
@@ -169,6 +172,41 @@ func (m *AgentManager) Run(ctx context.Context, sessionID string, content string
 		return nil, err
 	}
 	return svc.Run(ctx, sessionID, content, attachments...)
+}
+
+// SubagentLookup reports whether name is a registered, enabled agent that can
+// be invoked as a subagent, returning its definition.
+func (m *AgentManager) SubagentLookup(name string) (*agentdef.Definition, bool) {
+	def, ok := agentdef.Get().Get(name)
+	if !ok || def.Disabled {
+		return nil, false
+	}
+	return def, true
+}
+
+// RunSubagent launches a named agent on prompt inside a new child session of
+// parentSessionID, mirroring the tool-based delegation path but driven by an
+// @-mention. The child session is stored with the parent link so it can be
+// navigated from the session list. The returned channel receives the agent's
+// events; the child session is created before running.
+func (m *AgentManager) RunSubagent(ctx context.Context, parentSessionID, name, prompt string) (session.Session, <-chan agent.AgentEvent, error) {
+	def, ok := m.SubagentLookup(name)
+	if !ok {
+		return session.Session{}, nil, fmt.Errorf("unknown subagent %q", name)
+	}
+	svc, err := m.get(def.Name)
+	if err != nil {
+		return session.Session{}, nil, err
+	}
+	sess, err := m.deps.Sessions.CreateTaskSession(ctx, uuid.New().String(), parentSessionID, "New Agent Session")
+	if err != nil {
+		return session.Session{}, nil, fmt.Errorf("error creating session: %w", err)
+	}
+	events, err := svc.Run(ctx, sess.ID, prompt)
+	if err != nil {
+		return session.Session{}, nil, err
+	}
+	return sess, events, nil
 }
 
 // Cancel cancels any in-flight request for sessionID across all instantiated
