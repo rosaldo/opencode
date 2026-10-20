@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 
 	"github.com/opencode-ai/opencode/internal/config"
 	"github.com/opencode-ai/opencode/internal/llm/models"
@@ -217,6 +218,7 @@ func generateSchema() map[string]any {
 	for modelID := range models.SupportedModels {
 		modelEnum = append(modelEnum, string(modelID))
 	}
+	sort.Strings(modelEnum)
 
 	agentDefSchema := map[string]any{
 		"type":        "object",
@@ -344,6 +346,18 @@ func generateSchema() map[string]any {
 	schema["properties"].(map[string]any)["defaultAgent"] = map[string]any{
 		"type":        "string",
 		"description": "Deprecated: use \"default_agent\"",
+	}
+
+	// Top-level model selection (Spec 11b).
+	schema["properties"].(map[string]any)["model"] = map[string]any{
+		"type":        "string",
+		"description": "Primary model (bare id or provider/model); applied to the primary agent unless it sets its own model",
+		"enum":        modelEnum,
+	}
+	schema["properties"].(map[string]any)["small_model"] = map[string]any{
+		"type":        "string",
+		"description": "Model for small tasks (session title, summarisation); applied unless those agents set their own model",
+		"enum":        modelEnum,
 	}
 
 	// Add LSP configuration

@@ -1,5 +1,8 @@
 {
   "$schema": "./opencode-schema.json",
+  "default_agent": "coder",
+  "model": "anthropic/claude-4-sonnet",
+  "small_model": "anthropic/claude-3.5-haiku",
   "agents": {
     "security-auditor": {
       "description": "Auditoria de segurança do código",

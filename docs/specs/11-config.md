@@ -96,6 +96,18 @@ subdivididas em 11b/11c.
 
 ## Status
 
+### 11b — chaves núcleo (`model`, `small_model`, `default_agent`) — Verificado
+
+- `Config.Model` (`model`) e `Config.SmallModel` (`small_model`): `model` define o modelo do
+  agente primário (o `default_agent`, caindo em `coder`) e dos subagentes sem modelo próprio;
+  `small_model` define o modelo de `title` e `summarizer`. Modelo explícito em
+  `agents.<nome>.model` sempre vence.
+- `applyModelSelection` roda após o unmarshal; referências `provider/model` são resolvidas por
+  `models.ResolveModelID`; modelo de topo não resolvível é avisado e ignorado.
+- `validateAgent` passou a resolver `provider/model` antes do lookup (builtins incluídos).
+- `cmd/schema/main.go` emite `model`/`small_model` e o enum de modelos agora é **ordenado**
+  (saída determinística, base para o teste de drift da 11d); `opencode-schema.json` regenerado.
+
 ### 11a — formato, localização e interpolação — Verificado
 
 - `internal/config/configfiles.go`: `configFiles(workingDir)` descobre os arquivos em ordem de

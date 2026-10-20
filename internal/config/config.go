@@ -100,6 +100,12 @@ type Config struct {
 	// "coder" when unset or invalid. Its v2 key is "default_agent"; the v1
 	// "defaultAgent" spelling is read as a deprecated alias.
 	DefaultAgent string `json:"default_agent,omitempty" mapstructure:"default_agent"`
+	// Model is the v2 primary model ("provider/model" or a bare id). It is
+	// applied to the primary agent unless that agent sets its own model.
+	Model string `json:"model,omitempty"`
+	// SmallModel is the v2 model for small/auxiliary tasks (session titles and
+	// summarisation), applied unless those agents set their own model.
+	SmallModel string `json:"small_model,omitempty" mapstructure:"small_model"`
 	// DefaultAgentV1 is the deprecated v1 spelling ("defaultAgent"). It is read
 	// only to back-fill DefaultAgent when the v2 key is absent.
 	//
@@ -170,6 +176,7 @@ func Load(workingDir string, debug bool) (*Config, error) {
 	}
 
 	applyDefaultValues()
+	applyModelSelection()
 	defaultLevel := slog.LevelInfo
 	if cfg.Debug {
 		defaultLevel = slog.LevelDebug
@@ -655,6 +662,60 @@ func hasCopilotCredentials() bool {
 	return false
 }
 
+// applyModelSelection wires the v2 top-level "model" and "small_model" keys to
+// the agents they govern (Spec 11b):
+//
+//   - "model" sets the primary agent's model (the configured default agent,
+//     falling back to "coder") unless that agent sets its own "agents.<name>.model";
+//     subagents without their own model inherit the same value.
+//   - "small_model" sets the session-title and summariser models unless those
+//     agents set their own model.
+//
+// An explicit per-agent model always wins. An unresolvable top-level model is
+// warned about and ignored (leaving the provider-derived default in place).
+func applyModelSelection() {
+	if cfg == nil {
+		return
+	}
+
+	setIfUnset := func(agent string, ref string, key string) {
+		if ref == "" || viper.InConfig("agents."+agent+".model") {
+			return
+		}
+		id, ok := models.ResolveModelID(ref)
+		if !ok {
+			logging.Warn("unsupported model in config, keeping default", "key", key, "model", ref)
+			return
+		}
+		def := cfg.Agents[agent]
+		def.Model = string(id)
+		cfg.Agents[agent] = def
+	}
+
+	if cfg.Model != "" {
+		primary := cfg.effectiveDefaultAgent()
+		if strings.TrimSpace(primary) == "" {
+			primary = string(AgentCoder)
+		}
+		setIfUnset(primary, cfg.Model, "model")
+		// Subagents without an explicit model inherit the primary model,
+		// matching the "model" = default-for-everything semantics of v2.
+		for name, def := range cfg.Agents {
+			if name == primary || name == string(AgentTitle) || name == string(AgentSummarizer) {
+				continue
+			}
+			if def.Mode == string(agentdef.ModeSubagent) {
+				setIfUnset(name, cfg.Model, "model")
+			}
+		}
+	}
+
+	if cfg.SmallModel != "" {
+		setIfUnset(string(AgentTitle), cfg.SmallModel, "small_model")
+		setIfUnset(string(AgentSummarizer), cfg.SmallModel, "small_model")
+	}
+}
+
 // applyDefaultValues sets default values for configuration fields that need processing.
 func applyDefaultValues() {
 	// Set default MCP type if not specified
@@ -668,6 +729,13 @@ func applyDefaultValues() {
 
 // It validates model IDs and providers, ensuring they are supported.
 func validateAgent(cfg *Config, name string, agent AgentDefinition) error {
+	// Resolve "provider/model" references to a bare ModelID first.
+	if agent.Model != "" {
+		if id, ok := models.ResolveModelID(agent.Model); ok {
+			agent.Model = string(id)
+			cfg.Agents[name] = agent
+		}
+	}
 	// Check if model exists
 	// TODO:	If a copilot model is specified, but model is not found,
 	// 		 	it might be new model. The https://api.githubcopilot.com/models
