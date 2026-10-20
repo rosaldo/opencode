@@ -18,8 +18,14 @@ var sourceDirs = []string{"agent", "agents"}
 type Options struct {
 	// GlobalDirs are scanned first (lowest precedence).
 	GlobalDirs []string
-	// ProjectDir is scanned last (highest precedence, overrides global).
+	// GlobalDefinitions are registered after GlobalDirs, overriding any
+	// markdown agent with the same name from a global directory.
+	GlobalDefinitions []*Definition
+	// ProjectDir is scanned next (overrides global).
 	ProjectDir string
+	// ProjectDefinitions are registered last (highest precedence), overriding
+	// both project markdown files and global definitions.
+	ProjectDefinitions []*Definition
 	// Builtins are registered before any file and act as defaults.
 	Builtins []*Definition
 }
@@ -53,34 +59,50 @@ func Load(opts Options) (*Registry, error) {
 		}
 	}
 
-	dirs := make([]string, 0, len(opts.GlobalDirs)+1)
-	for _, d := range opts.GlobalDirs {
-		if strings.TrimSpace(d) != "" {
-			dirs = append(dirs, d)
+	registerAll := func(defs []*Definition) {
+		for _, d := range defs {
+			if err := reg.Register(d); err != nil {
+				logging.Warn("skipping invalid agent definition", "agent", d.Name, "error", err)
+			}
 		}
-	}
-	if strings.TrimSpace(opts.ProjectDir) != "" {
-		dirs = append(dirs, opts.ProjectDir)
 	}
 
-	for _, dir := range dirs {
-		files, err := discover(dir)
-		if err != nil {
-			logging.Warn("failed to scan agent directory", "dir", dir, "error", err)
+	// Global layer: markdown dirs first, then JSON definitions so JSON wins at
+	// the same level.
+	for _, dir := range opts.GlobalDirs {
+		if strings.TrimSpace(dir) == "" {
 			continue
 		}
-		for _, file := range files {
-			def, err := loadFile(file.path, teamOf(file.path, file.base))
-			if err != nil {
-				logging.Warn("skipping invalid agent file", "file", file.path, "error", err)
-				continue
-			}
-			if err := reg.Register(def); err != nil {
-				logging.Warn("skipping duplicate agent", "file", file.path, "error", err)
-			}
+		scanDir(reg, dir)
+	}
+	registerAll(opts.GlobalDefinitions)
+
+	// Project layer.
+	if strings.TrimSpace(opts.ProjectDir) != "" {
+		scanDir(reg, opts.ProjectDir)
+	}
+	registerAll(opts.ProjectDefinitions)
+
+	return reg, nil
+}
+
+// scanDir discovers and registers the markdown agent files under dir.
+func scanDir(reg *Registry, dir string) {
+	files, err := discover(dir)
+	if err != nil {
+		logging.Warn("failed to scan agent directory", "dir", dir, "error", err)
+		return
+	}
+	for _, file := range files {
+		def, err := loadFile(file.path, teamOf(file.path, file.base))
+		if err != nil {
+			logging.Warn("skipping invalid agent file", "file", file.path, "error", err)
+			continue
+		}
+		if err := reg.Register(def); err != nil {
+			logging.Warn("skipping duplicate agent", "file", file.path, "error", err)
 		}
 	}
-	return reg, nil
 }
 
 // discoveredFile is one markdown file together with the agent(s) root it was

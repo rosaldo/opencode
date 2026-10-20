@@ -190,3 +190,43 @@ func TestSplitFrontmatter(t *testing.T) {
 		t.Fatalf("header=%q body=%q", header, body)
 	}
 }
+
+func TestConfigDefinitionsWinAtSameLevel(t *testing.T) {
+	global := t.TempDir()
+	project := t.TempDir()
+	// Both levels have a markdown agent with the same name as the JSON def.
+	writeFile(t, filepath.Join(global, "agent", "audit.md"), "---\ndescription: md-global\n---\nbody")
+	writeFile(t, filepath.Join(project, "agent", "audit.md"), "---\ndescription: md-project\n---\nbody")
+
+	reg, err := Load(Options{
+		GlobalDirs: []string{global},
+		GlobalDefinitions: []*Definition{
+			{Name: "audit", Description: "json-global", Mode: ModeSubagent},
+		},
+		ProjectDir: project,
+	})
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	audit, _ := reg.Get("audit")
+	// Project markdown outranks global JSON.
+	if audit.Description != "md-project" {
+		t.Fatalf("description = %q, want md-project", audit.Description)
+	}
+
+	reg, err = Load(Options{
+		GlobalDirs: []string{global},
+		ProjectDir: project,
+		ProjectDefinitions: []*Definition{
+			{Name: "audit", Description: "json-project", Mode: ModeSubagent},
+		},
+	})
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	audit, _ = reg.Get("audit")
+	// Project JSON outranks project markdown.
+	if audit.Description != "json-project" {
+		t.Fatalf("description = %q, want json-project", audit.Description)
+	}
+}

@@ -110,6 +110,84 @@
   },
   "description": "Configuration schema for the OpenCode application",
   "properties": {
+    "agent": {
+      "additionalProperties": {
+        "description": "Custom agent definition (mirrors agent markdown frontmatter)",
+        "properties": {
+          "color": {
+            "description": "Display color for the agent",
+            "type": "string"
+          },
+          "description": {
+            "description": "Short description shown in the agent switcher",
+            "type": "string"
+          },
+          "disabled": {
+            "default": false,
+            "description": "Whether the agent is disabled",
+            "type": "boolean"
+          },
+          "hidden": {
+            "default": false,
+            "description": "Whether the agent is hidden from the switcher",
+            "type": "boolean"
+          },
+          "maxTokens": {
+            "description": "Maximum tokens for the agent",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "mode": {
+            "description": "How the agent may be used",
+            "enum": [
+              "primary",
+              "subagent",
+              "all"
+            ],
+            "type": "string"
+          },
+          "model": {
+            "description": "Model ID for the agent (bare ID or provider/model)",
+            "type": "string"
+          },
+          "permissions": {
+            "description": "Per-agent permission policy",
+            "type": "object"
+          },
+          "prompt": {
+            "description": "Inline prompt text or a {file:./path} reference resolved relative to the config file",
+            "type": "string"
+          },
+          "reasoningEffort": {
+            "description": "Reasoning effort for models that support it (OpenAI, Anthropic)",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "type": "string"
+          },
+          "team": {
+            "description": "Department the agent belongs to",
+            "type": "string"
+          },
+          "temperature": {
+            "description": "Sampling temperature for the agent",
+            "type": "number"
+          },
+          "tools": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "description": "Allow/deny tools by name; \"*\" is a wildcard",
+            "type": "object"
+          }
+        },
+        "type": "object"
+      },
+      "description": "Custom agent definitions keyed by agent name",
+      "type": "object"
+    },
     "agents": {
       "additionalProperties": {
         "description": "Agent configuration",
@@ -274,6 +352,10 @@
       "default": false,
       "description": "Enable LSP debug mode",
       "type": "boolean"
+    },
+    "defaultAgent": {
+      "description": "Primary agent selected at boot (falls back to \"coder\")",
+      "type": "string"
     },
     "lsp": {
       "additionalProperties": {

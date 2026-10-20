@@ -51,6 +51,27 @@ type Agent struct {
 	ReasoningEffort string         `json:"reasoningEffort"` // For openai models low,medium,heigh
 }
 
+// AgentDefinition is the config-facing description of a custom agent declared
+// under the "agent" key of the JSON configuration. It mirrors the frontmatter
+// accepted in agent markdown files (Spec 01).
+type AgentDefinition struct {
+	Description     string          `json:"description,omitempty"`
+	Mode            string          `json:"mode,omitempty"`
+	Hidden          bool            `json:"hidden,omitempty"`
+	Disabled        bool            `json:"disabled,omitempty"`
+	Team            string          `json:"team,omitempty"`
+	Model           string          `json:"model,omitempty"`
+	MaxTokens       int64           `json:"maxTokens,omitempty"`
+	ReasoningEffort string          `json:"reasoningEffort,omitempty"`
+	Temperature     float64         `json:"temperature,omitempty"`
+	Tools           map[string]bool `json:"tools,omitempty"`
+	Permissions     map[string]any  `json:"permissions,omitempty"`
+	Color           string          `json:"color,omitempty"`
+	// Prompt is either inline text or a "{file:./path}" reference resolved
+	// relative to the configuration file that declares it.
+	Prompt string `json:"prompt,omitempty"`
+}
+
 // Provider defines configuration for an LLM provider.
 type Provider struct {
 	APIKey   string `json:"apiKey"`
@@ -89,7 +110,12 @@ type Config struct {
 	Providers    map[models.ModelProvider]Provider `json:"providers,omitempty"`
 	LSP          map[string]LSPConfig              `json:"lsp,omitempty"`
 	Agents       map[AgentName]Agent               `json:"agents,omitempty"`
-	Debug        bool                              `json:"debug,omitempty"`
+	// Agent declares custom agent definitions keyed by name (Spec 05).
+	Agent map[string]AgentDefinition `json:"agent,omitempty"`
+	// DefaultAgent selects the primary agent used at boot. Falls back to
+	// "coder" when unset or invalid.
+	DefaultAgent string `json:"defaultAgent,omitempty"`
+	Debug        bool   `json:"debug,omitempty"`
 	DebugLSP     bool                              `json:"debugLSP,omitempty"`
 	ContextPaths []string                          `json:"contextPaths,omitempty"`
 	TUI          TUIConfig                         `json:"tui"`
@@ -218,6 +244,7 @@ func Load(workingDir string, debug bool) (*Config, error) {
 	if err := loadAgentDefinitions(workingDir); err != nil {
 		logging.Warn("failed to load agent definitions", "error", err)
 	}
+	validateDefinitions()
 	return cfg, nil
 }
 
@@ -240,18 +267,150 @@ func agentSearchDirs() []string {
 }
 
 // loadAgentDefinitions builds the process-wide agent registry from builtins,
-// global directories and the project directory.
+// global directories and the project directory, layering in the custom agent
+// definitions declared in the global and local JSON configuration files.
 func loadAgentDefinitions(workingDir string) error {
+	globalDefs := loadConfigDefinitions(configFileDirs())
+	localDefs := loadConfigDefinitions([]string{workingDir})
+
 	reg, err := agentdef.Load(agentdef.Options{
-		GlobalDirs: agentSearchDirs(),
-		ProjectDir: filepath.Join(workingDir, defaultDataDirectory),
-		Builtins:   builtinDefinitions(),
+		GlobalDirs:         agentSearchDirs(),
+		GlobalDefinitions:  globalDefs,
+		ProjectDir:         filepath.Join(workingDir, defaultDataDirectory),
+		ProjectDefinitions: localDefs,
+		Builtins:           builtinDefinitions(),
 	})
 	if err != nil {
 		return err
 	}
 	agentdef.Set(reg)
+
+	// Resolve the configured default agent (falls back to "coder").
+	if cfg != nil {
+		applyDefaultAgent(reg, cfg.DefaultAgent)
+	}
 	return nil
+}
+
+// applyDefaultAgent selects the preferred default agent on reg. A name that is
+// missing or disabled is warned about and ignored, leaving the registry default
+// ("coder") in place.
+func applyDefaultAgent(reg *agentdef.Registry, name string) {
+	if strings.TrimSpace(name) == "" {
+		return
+	}
+	if d, ok := reg.Get(name); ok && !d.Disabled {
+		reg.SetDefault(name)
+		return
+	}
+	logging.Warn("invalid defaultAgent, falling back to coder", "defaultAgent", name)
+}
+
+// configFileDirs returns the directories that may hold a global ".opencode.json",
+// mirroring viper's search paths.
+func configFileDirs() []string {
+	var dirs []string
+	home, err := os.UserHomeDir()
+	if err == nil && home != "" {
+		dirs = append(dirs, home)
+	}
+	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
+		dirs = append(dirs, filepath.Join(xdg, appName))
+	} else if home != "" {
+		dirs = append(dirs, filepath.Join(home, ".config", appName))
+	}
+	return dirs
+}
+
+// loadConfigDefinitions reads the "agent" map from the ".opencode.json" file in
+// each dir (in order, later wins) and converts them into agent definitions. The
+// prompt of each definition is resolved relative to the directory it was
+// declared in.
+func loadConfigDefinitions(dirs []string) []*agentdef.Definition {
+	byName := make(map[string]*agentdef.Definition)
+	order := make([]string, 0)
+	for _, dir := range dirs {
+		path := filepath.Join(dir, fmt.Sprintf(".%s.json", appName))
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		var fileCfg struct {
+			Agent map[string]AgentDefinition `json:"agent"`
+		}
+		if err := json.Unmarshal(data, &fileCfg); err != nil {
+			logging.Warn("failed to parse agent definitions from config", "file", path, "error", err)
+			continue
+		}
+		for name, def := range fileCfg.Agent {
+			if _, seen := byName[name]; !seen {
+				order = append(order, name)
+			}
+			byName[name] = definitionFromConfig(name, def, dir)
+		}
+	}
+	out := make([]*agentdef.Definition, 0, len(order))
+	for _, name := range order {
+		out = append(out, byName[name])
+	}
+	return out
+}
+
+// definitionFromConfig converts a config-facing AgentDefinition into an
+// agentdef.Definition, resolving the "{file:...}" prompt form relative to baseDir.
+func definitionFromConfig(name string, def AgentDefinition, baseDir string) *agentdef.Definition {
+	mode := agentdef.Mode(strings.TrimSpace(def.Mode))
+	switch mode {
+	case "", agentdef.ModePrimary, agentdef.ModeSubagent, agentdef.ModeAll:
+		// ok
+	default:
+		logging.Warn("invalid mode in agent definition, defaulting to all",
+			"agent", name, "mode", def.Mode)
+		mode = agentdef.ModeAll
+	}
+
+	d := &agentdef.Definition{
+		Name:            name,
+		Description:     strings.TrimSpace(def.Description),
+		Mode:            mode,
+		Hidden:          def.Hidden,
+		Disabled:        def.Disabled,
+		Team:            strings.TrimSpace(def.Team),
+		Model:           strings.TrimSpace(def.Model),
+		MaxTokens:       def.MaxTokens,
+		ReasoningEffort: strings.ToLower(strings.TrimSpace(def.ReasoningEffort)),
+		Temperature:     def.Temperature,
+		Tools:           def.Tools,
+		Permissions:     def.Permissions,
+		Color:           strings.TrimSpace(def.Color),
+	}
+	if prompt := strings.TrimSpace(def.Prompt); prompt != "" {
+		d.SetPrompt(resolvePrompt(prompt, baseDir))
+	}
+	return d
+}
+
+// resolvePrompt expands the "{file:./path}" prompt form into the file contents
+// (path relative to baseDir). Any other value is returned as inline text.
+func resolvePrompt(prompt, baseDir string) string {
+	const prefix = "{file:"
+	if !strings.HasPrefix(prompt, prefix) || !strings.HasSuffix(prompt, "}") {
+		return prompt
+	}
+	rel := strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(prompt, prefix), "}"))
+	if rel == "" {
+		return ""
+	}
+	path := rel
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(baseDir, rel)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		logging.Warn("failed to read agent prompt file", "file", path, "error", err)
+		return ""
+	}
+	return string(data)
 }
 
 // builtinDefinitions returns the definitions for the agents built into opencode.
@@ -711,6 +870,43 @@ func Validate() error {
 	}
 
 	return nil
+}
+
+// validateDefinitions checks custom agent definitions loaded from JSON. A model
+// that cannot be resolved is warned about and made to inherit the default
+// agent's model; an invalid maxTokens is replaced with the model default. It
+// never aborts, matching the lenient handling of builtin agents.
+func validateDefinitions() {
+	if cfg == nil {
+		return
+	}
+	inherit := cfg.Agents[AgentCoder].Model
+	for _, def := range agentdef.Get().List() {
+		if def.Builtin {
+			continue
+		}
+		var modelInfo models.Model
+		if def.Model == "" {
+			def.Model = string(inherit)
+			modelInfo = models.SupportedModels[inherit]
+		} else if id, ok := models.ResolveModelID(def.Model); ok {
+			def.Model = string(id)
+			modelInfo = models.SupportedModels[id]
+		} else {
+			logging.Warn("unsupported model in agent definition, inheriting default",
+				"agent", def.Name, "configured_model", def.Model, "inherited_model", inherit)
+			def.Model = string(inherit)
+			modelInfo = models.SupportedModels[inherit]
+		}
+
+		if def.MaxTokens <= 0 {
+			if modelInfo.DefaultMaxTokens > 0 {
+				def.MaxTokens = modelInfo.DefaultMaxTokens
+			} else {
+				def.MaxTokens = MaxTokensFallbackDefault
+			}
+		}
+	}
 }
 
 // getProviderAPIKey gets the API key for a provider from environment variables

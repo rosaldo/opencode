@@ -105,3 +105,66 @@ Mantida por `agentdef.Registry.Register`, com o loader de config convertendo
 - `{file:}` exige resolver path relativo ao config; usar `viper.ConfigFileUsed()`.
 - Evitar duplicar a lógica de defaults de modelo já existente (`setDefaultModelForAgent`,
   `config.go:671-817`) — extrair helper e reusar.
+
+## Implementação (fase 5)
+
+Tudo em `internal/config/config.go`, `internal/agentdef/loader.go`, `opencode-schema.json`,
+`.opencode.json`; testes em `internal/config/config_test.go` e `internal/agentdef/loader_test.go`.
+
+### Structs e parsing
+
+- `type AgentDefinition struct` (config-facing) espelha o frontmatter do Spec 01 e ainda
+  `team` e `prompt`. `Config` ganhou `Agent map[string]AgentDefinition` (json `agent`) e
+  `DefaultAgent string` (json `defaultAgent`).
+- `loadConfigDefinitions(dirs)` lê o `agent` de cada `.opencode.json` **diretamente** (não via
+  viper) para preservar a origem de cada definição. Dedup por nome: dirs posteriores vencem
+  (global < local).
+- `definitionFromConfig(name, def, baseDir)` converte para `*agentdef.Definition`; `mode`
+  inválido → `all` com warn. `resolvePrompt` expande `"{file:./x}"` (relativo a `baseDir`,
+  dir do arquivo de config) para o conteúdo; qualquer outro valor é inline. Leitura do arquivo
+  é **eager** aqui (o `SetPrompt` marca `hasBody`), pois a definição veio do JSON, não de um
+  `.md` lazy.
+
+### Precedência (desvio documentado)
+
+`Spec 05` lista a ordem `builtins → JSON → .md`, mas também diz "JSON vence no mesmo nível"
+(l.67). Como `.md` é escaneado por camada (global/projeto), a precedência implementada é:
+
+1. builtins
+2. camada global: `.md` globais → `GlobalDefinitions` (JSON global, vence `.md` global)
+3. camada de projeto: `.md` do projeto → `ProjectDefinitions` (JSON do projeto, vence `.md` do projeto)
+
+Ou seja: **JSON vence `.md` dentro do mesmo nível**, e **projeto vence global** entre níveis.
+`agentdef.Options` ganhou `GlobalDefinitions` e `ProjectDefinitions`; `loadFile` virou o helper
+`scanDir` reusado pelas duas camadas.
+
+### Default e validação
+
+- `applyDefaultAgent(reg, name)`: nome válido e não-`disabled` → `reg.SetDefault`; vazio → no-op;
+  inválido/disabled → warn + mantém `coder` (default do registry). Fonte do agente ativo no boot
+  continua sendo `agentdef.Get().Default()` (usado em `internal/app/agent_manager.go:44`).
+- `validateDefinitions()` roda após `loadAgentDefinitions` (as defs só existem no registry
+  depois do load). Para cada def não-builtin: `Model` vazio → herda o modelo do `coder`;
+  `Model` não resolvível por `models.ResolveModelID` → warn + herda `coder`; `MaxTokens <= 0`
+  → `model.DefaultMaxTokens` ou `MaxTokensFallbackDefault`. Nunca aborta.
+
+### Schema / exemplo
+
+- `opencode-schema.json`: novo `agent` (map de definições com `description`, `mode`, `hidden`,
+  `disabled`, `team`, `model`, `maxTokens`, `reasoningEffort`, `temperature`, `tools`,
+  `permissions`, `color`, `prompt`) e nova chave `defaultAgent`. `agents` e `definitions`
+  mantidos intactos.
+- `.opencode.json` de exemplo ganhou um agente `security-auditor` (mode `subagent`, prompt inline).
+
+### Back-compat
+
+- Config antiga (sem `agent`/`defaultAgent`) carrega idêntica: as camadas de defs ficam vazias e
+  `DefaultAgent` vazio mantém `coder`.
+- `agents` (builtins) intacto, inclusive o override de title (`config.go:211-214`).
+- Testes: `internal/config/config_test.go` (parse, `{file:}`, inline, dedup local>global, mode
+  inválido, `applyDefaultAgent`, `validateDefinitions`) e
+  `internal/agentdef/loader_test.go::TestConfigDefinitionsWinAtSameLevel` cobrem os critérios.
+
+Nota: a flake intermitente `TestGetContextFromPaths` (`internal/llm/prompt`, ordem não
+determinística por goroutines) é pré-existente e fora do escopo desta fase.
+

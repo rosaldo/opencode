@@ -36,7 +36,7 @@ Hoje existem **4 agentes fixos** (`coder`, `summarizer`, `task`, `title`) — en
 | 2 | [02-tools-permissions.md](02-tools-permissions.md) | Tools e permissões por agente (`ToolsForDefinition`) | Verificado | 01 |
 | 3 | [03-subagents.md](03-subagents.md) | Subagentes por nome na tool `agent` | Verificado | 01, 02 |
 | 4 | [04-tui-switcher.md](04-tui-switcher.md) | Switcher (Tab) + `@`-mention, `AgentManager` | Verificado (4a + 4b) | 01, 02, 03 |
-| 5 | [05-config-compat.md](05-config-compat.md) | Config JSON (`agent`, `defaultAgent`), schema, validação | Planejado | 01 |
+| 5 | [05-config-compat.md](05-config-compat.md) | Config JSON (`agent`, `defaultAgent`), schema, validação | Verificado | 01 |
 
 Status possíveis: `Planejado` → `Em andamento` → `Implementado` → `Verificado`.
 
