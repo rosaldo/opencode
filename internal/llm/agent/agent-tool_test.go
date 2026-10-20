@@ -88,7 +88,7 @@ func TestSubagentsListingHonoursTaskPolicy(t *testing.T) {
 	caller := &agentdef.Definition{
 		Name:        "restricted",
 		Mode:        agentdef.ModeAll,
-		Permissions: []agentdef.PermissionRule{{Action: "task", Resource: "reviewer", Effect: "allow"}, {Action: "task", Resource: "", Effect: "deny"}},
+		Permissions: []agentdef.PermissionRule{{Action: "task", Resource: "", Effect: "deny"}, {Action: "task", Resource: "reviewer", Effect: "allow"}},
 	}
 
 	listed := subagents(caller, false, nil)

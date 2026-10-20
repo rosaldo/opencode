@@ -176,6 +176,10 @@ type Config struct {
 	Update       string                    `json:"update,omitempty" mapstructure:"-"`
 	Username     string                    `json:"username,omitempty" mapstructure:"-"`
 	Permissions  []agentdef.PermissionRule `json:"permissions,omitempty" mapstructure:"-"`
+	// Policies is the top-level governance list (provider.use, tool.use, MCP/
+	// skill/plugin blocking). Evaluated like permissions: last matching wins,
+	// and the highest-precedence config file comes last (Spec 07).
+	Policies []agentdef.PermissionRule `json:"policies,omitempty" mapstructure:"-"`
 }
 
 // Application constants

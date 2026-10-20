@@ -915,7 +915,34 @@
       "type": "string"
     },
     "permissions": {
-      "description": "Ordered global tool permission rules; the first matching rule wins",
+      "description": "Ordered global tool permission rules; the last matching rule wins",
+      "items": {
+        "properties": {
+          "action": {
+            "type": "string"
+          },
+          "effect": {
+            "enum": [
+              "allow",
+              "ask",
+              "deny"
+            ],
+            "type": "string"
+          },
+          "resource": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "action",
+          "effect"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "policies": {
+      "description": "Ordered governance policies (provider.use, tool.use, MCP/skill/plugin); the last matching rule wins",
       "items": {
         "properties": {
           "action": {

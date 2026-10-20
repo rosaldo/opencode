@@ -36,11 +36,11 @@ func FullToolSet(ctx context.Context, caller *agentdef.Definition, deps AgentToo
 		tools.NewBashTool(deps.Permissions),
 		tools.NewEditTool(deps.LspClients, deps.Permissions, deps.History),
 		tools.NewFetchTool(deps.Permissions),
-		tools.NewGlobTool(),
-		tools.NewGrepTool(),
+		tools.NewGlobTool(deps.Permissions),
+		tools.NewGrepTool(deps.Permissions),
 		tools.NewLsTool(),
 		tools.NewSourcegraphTool(),
-		tools.NewViewTool(deps.LspClients),
+		tools.NewViewTool(deps.LspClients, deps.Permissions),
 		tools.NewPatchTool(deps.LspClients, deps.Permissions, deps.History),
 		tools.NewWriteTool(deps.LspClients, deps.Permissions, deps.History),
 	}
@@ -57,11 +57,11 @@ func FullToolSet(ctx context.Context, caller *agentdef.Definition, deps AgentToo
 // TaskToolSet is the read only tool set of the builtin task subagent.
 func TaskToolSet(deps AgentToolDeps) []tools.BaseTool {
 	return []tools.BaseTool{
-		tools.NewGlobTool(),
-		tools.NewGrepTool(),
+		tools.NewGlobTool(deps.Permissions),
+		tools.NewGrepTool(deps.Permissions),
 		tools.NewLsTool(),
 		tools.NewSourcegraphTool(),
-		tools.NewViewTool(deps.LspClients),
+		tools.NewViewTool(deps.LspClients, deps.Permissions),
 	}
 }
 
@@ -73,10 +73,44 @@ func ToolsForDefinition(def *agentdef.Definition, deps AgentToolDeps) []tools.Ba
 		return FullToolSet(context.Background(), nil, deps)
 	}
 	base := deps
-	if policy, err := permission.ParsePolicy(def.Permissions); err == nil && policy.HasRules {
+	if policy := effectivePolicy(def); policy.HasRules {
 		base.Permissions = permission.NewAgentScoped(base.Permissions, policy)
 	}
+	// Top-level policies wrap outermost so a deny is final.
+	base.Permissions = permission.NewPolicyScoped(base.Permissions, configPolicies())
 	return FilterTools(baseToolSet(def, base), def.Tools)
+}
+
+// configPolicies compiles the top-level policies list into a Policy. It is
+// evaluated where there is no per-agent scoping (provider and tool governance).
+func configPolicies() permission.Policy {
+	cfg := config.Get()
+	if cfg == nil || len(cfg.Policies) == 0 {
+		return permission.Policy{}
+	}
+	policy, err := permission.ParsePolicy(cfg.Policies)
+	if err != nil {
+		return permission.Policy{}
+	}
+	return policy
+}
+
+// effectivePolicy merges the top-level config permissions with the agent's own.
+// Under the v2 "last matching rule wins" semantics, the top-level rules come
+// first so that the agent's more specific rules take precedence.
+func effectivePolicy(def *agentdef.Definition) permission.Policy {
+	var rules []agentdef.PermissionRule
+	if cfg := config.Get(); cfg != nil {
+		rules = append(rules, cfg.Permissions...)
+	}
+	if def != nil {
+		rules = append(rules, def.Permissions...)
+	}
+	policy, err := permission.ParsePolicy(rules)
+	if err != nil {
+		return permission.Policy{}
+	}
+	return policy
 }
 
 // baseToolSet picks the starting tool set for an agent. Custom agents inherit

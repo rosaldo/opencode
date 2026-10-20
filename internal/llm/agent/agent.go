@@ -762,6 +762,9 @@ func createAgentProvider(name string) (provider.Provider, error) {
 	if providerCfg.Disabled {
 		return nil, fmt.Errorf("provider %s is not enabled", model.Provider)
 	}
+	if action, ok := configPolicies().Provider(string(model.Provider)); ok && action == permission.ActionDeny {
+		return nil, fmt.Errorf("provider %s is blocked by policy", model.Provider)
+	}
 
 	opts := []provider.ProviderClientOption{
 		provider.WithAPIKey(providerCfg.EffectiveAPIKey()),

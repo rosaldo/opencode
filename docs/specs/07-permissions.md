@@ -93,6 +93,24 @@ effect}` (a última que casa vence) e **`policies`** como camada de governança 
 - `internal/config`: parse de `permissions`/`policies`, precedência topo×agente.
 - `internal/llm/agent`: política efetiva.
 
+## Status
+
+- **Verificado**: `permissions` (array `{action,resource,effect}`) com semântica **última regra que
+  casa vence** (alinhado à v2; corrige a Spec 13, que dizia "primeira" — ver nota) em
+  `internal/permission/policy.go` (`Decide`/`Task`) e `scoped.go`.
+- Merge topo×agente: `ToolsForDefinition` concatena `cfg.Permissions` (topo) + `def.Permissions`
+  (agente, vence por vir depois). `Config.Permissions` já existia (Spec 11c).
+- `policies` (`Config.Policies`): `Policy.Provider` (`provider.use`) e `Policy.Tool` (`tool.use`,
+  alvo `key:valor`, ex. `shell:git push *`); `NewPolicyScoped` envolve a camada mais externa em
+  `ToolsForDefinition`; `createAgentProvider` nega provider por policy.
+- Gating ampliado (critério 6): `view`/`glob`/`grep` passam a consultar a permissão (default allow,
+  pois sem regra cai no fluxo base).
+- `opencode-schema.json`/`cmd/schema` emitem `permissions` e `policies`.
+- Testes: `internal/permission/policy_test.go` (última vence, `Provider`/`Tool`, scoped),
+  `internal/config/permissions_test.go`, `internal/llm/agent`.
+- **Nota de conflito**: a Spec 13 dizia "primeira regra que casa vence"; a doc oficial v2 e a Spec 07
+  dizem **última**. Adotamos última (ver `docs/specs/13-agents-v2.md`, atualizado).
+
 ## Riscos
 
 - Compat: mapear `agent.<n>.permissions` (mapa, onda 1) para o array v2.

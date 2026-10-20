@@ -567,7 +567,20 @@ func generateSchema() map[string]any {
 	}
 	schema["properties"].(map[string]any)["permissions"] = map[string]any{
 		"type":        "array",
-		"description": "Ordered global tool permission rules; the first matching rule wins",
+		"description": "Ordered global tool permission rules; the last matching rule wins",
+		"items": map[string]any{
+			"type":     "object",
+			"required": []string{"action", "effect"},
+			"properties": map[string]any{
+				"action":   map[string]any{"type": "string"},
+				"resource": map[string]any{"type": "string"},
+				"effect":   map[string]any{"type": "string", "enum": []string{"allow", "ask", "deny"}},
+			},
+		},
+	}
+	schema["properties"].(map[string]any)["policies"] = map[string]any{
+		"type":        "array",
+		"description": "Ordered governance policies (provider.use, tool.use, MCP/skill/plugin); the last matching rule wins",
 		"items": map[string]any{
 			"type":     "object",
 			"required": []string{"action", "effect"},

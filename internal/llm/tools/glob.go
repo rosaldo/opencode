@@ -13,6 +13,7 @@ import (
 	"github.com/opencode-ai/opencode/internal/config"
 	"github.com/opencode-ai/opencode/internal/fileutil"
 	"github.com/opencode-ai/opencode/internal/logging"
+	"github.com/opencode-ai/opencode/internal/permission"
 )
 
 const (
@@ -63,10 +64,12 @@ type GlobResponseMetadata struct {
 	Truncated     bool `json:"truncated"`
 }
 
-type globTool struct{}
+type globTool struct {
+	permissions permission.Service
+}
 
-func NewGlobTool() BaseTool {
-	return &globTool{}
+func NewGlobTool(permissions permission.Service) BaseTool {
+	return &globTool{permissions: permissions}
 }
 
 func (g *globTool) Info() ToolInfo {
@@ -100,6 +103,21 @@ func (g *globTool) Run(ctx context.Context, call ToolCall) (ToolResponse, error)
 	searchPath := params.Path
 	if searchPath == "" {
 		searchPath = config.WorkingDirectory()
+	}
+
+	if g.permissions != nil {
+		sessionID, _ := GetContextValues(ctx)
+		p := g.permissions.Request(permission.CreatePermissionRequest{
+			SessionID:   sessionID,
+			Path:        searchPath,
+			ToolName:    GlobToolName,
+			Action:      "glob",
+			Description: fmt.Sprintf("Glob files: %s", params.Pattern),
+			Params:      params.Pattern,
+		})
+		if !p {
+			return ToolResponse{}, permission.ErrorPermissionDenied
+		}
 	}
 
 	files, truncated, err := globFiles(params.Pattern, searchPath, 100)

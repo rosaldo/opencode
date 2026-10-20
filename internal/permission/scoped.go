@@ -1,5 +1,44 @@
 package permission
 
+// policyScopedService enforces the top-level governance policies before falling
+// back to the wrapped service. Its rules use the "tool.use" action and match the
+// target "tool" or "tool:value" (for example "shell:git push *").
+type policyScopedService struct {
+	Service
+	policy Policy
+}
+
+// NewPolicyScoped wraps base with the top-level policies. A nil service, or a
+// policy with no rules, returns base unchanged.
+func NewPolicyScoped(base Service, policy Policy) Service {
+	if base == nil || !policy.HasRules {
+		return base
+	}
+	return &policyScopedService{Service: base, policy: policy}
+}
+
+func (s *policyScopedService) Request(opts CreatePermissionRequest) bool {
+	target := PermissionKey(opts.ToolName)
+	if value := targetFromParams(opts.Params); value != "" {
+		target = target + ":" + value
+	}
+	action, matched := s.policy.Tool(target)
+	if !matched {
+		action, matched = s.policy.Tool(PermissionKey(opts.ToolName))
+	}
+	if !matched {
+		return s.Service.Request(opts)
+	}
+	switch action {
+	case ActionDeny:
+		return false
+	case ActionAllow:
+		return true
+	default:
+		return s.Service.Request(opts)
+	}
+}
+
 // agentScopedService evaluates a per-agent Policy before falling back to the
 // wrapped service. Requests the policy is silent about keep the default
 // interactive flow.

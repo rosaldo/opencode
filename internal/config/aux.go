@@ -209,6 +209,7 @@ type auxConfig struct {
 	Update       string                    `json:"update,omitempty"`
 	Username     string                    `json:"username,omitempty"`
 	Permissions  []agentdef.PermissionRule `json:"permissions,omitempty"`
+	Policies     []agentdef.PermissionRule `json:"policies,omitempty"`
 }
 
 // applyAuxConfig decodes the auxiliary v2 keys from the merged config map into
@@ -242,6 +243,7 @@ func applyAuxConfig(merged map[string]any) error {
 	cfg.Update = aux.Update
 	cfg.Username = aux.Username
 	cfg.Permissions = aux.Permissions
+	cfg.Policies = aux.Policies
 
 	applyAuxDefaults()
 	validateAux()

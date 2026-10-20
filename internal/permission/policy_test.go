@@ -145,25 +145,36 @@ func TestPolicyDecide(t *testing.T) {
 			wantMatched: true,
 		},
 		{
-			name: "first matching rule wins",
+			name: "last matching rule wins",
 			perms: []agentdef.PermissionRule{
 				rule("shell", "", "deny"),
 				rule("shell", "git *", "allow"),
-			},
-			tool:        "bash",
-			params:      "git status",
-			wantAction:  ActionDeny,
-			wantMatched: true,
-		},
-		{
-			name: "specific rule first wins",
-			perms: []agentdef.PermissionRule{
-				rule("shell", "git *", "allow"),
-				rule("shell", "", "deny"),
 			},
 			tool:        "bash",
 			params:      "git status",
 			wantAction:  ActionAllow,
+			wantMatched: true,
+		},
+		{
+			name: "catch all first, specific after",
+			perms: []agentdef.PermissionRule{
+				rule("shell", "*", "ask"),
+				rule("shell", "git push *", "deny"),
+			},
+			tool:        "bash",
+			params:      "git push origin main",
+			wantAction:  ActionDeny,
+			wantMatched: true,
+		},
+		{
+			name: "specific first is overridden by later catch all",
+			perms: []agentdef.PermissionRule{
+				rule("shell", "git *", "allow"),
+				rule("shell", "", "deny"),
+			},
+			tool:        "bash",
+			params:      "git status",
+			wantAction:  ActionDeny,
 			wantMatched: true,
 		},
 		{
@@ -191,8 +202,8 @@ func TestPolicyDecide(t *testing.T) {
 		{
 			name: "command may come from a CommandProvider",
 			perms: []agentdef.PermissionRule{
-				rule("shell", "git status", "allow"),
 				rule("shell", "", "deny"),
+				rule("shell", "git status", "allow"),
 			},
 			tool:        "bash",
 			params:      cmdParams{Cmd: "git status"},
@@ -315,10 +326,10 @@ func TestPolicyTask(t *testing.T) {
 			wantMatched: true,
 		},
 		{
-			name: "specific subagent rule first wins",
+			name: "catch all first, specific after",
 			perms: []agentdef.PermissionRule{
-				rule("task", "reviewer", "allow"),
 				rule("task", "", "deny"),
+				rule("task", "reviewer", "allow"),
 			},
 			subagent:    "reviewer",
 			wantAction:  ActionAllow,
@@ -437,4 +448,74 @@ func TestNewAgentScoped(t *testing.T) {
 			t.Fatal("an empty policy must not wrap the service")
 		}
 	})
+}
+
+func TestPolicyProviderAndTool(t *testing.T) {
+	t.Parallel()
+
+	p, err := ParsePolicy([]agentdef.PermissionRule{
+		rule("provider.use", "*", "deny"),
+		rule("provider.use", "anthropic", "allow"),
+		rule("tool.use", "shell:git push *", "deny"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if action, ok := p.Provider("openai"); !ok || action != ActionDeny {
+		t.Errorf("openai = %v %v, want deny", action, ok)
+	}
+	if action, ok := p.Provider("anthropic"); !ok || action != ActionAllow {
+		t.Errorf("anthropic = %v %v, want allow", action, ok)
+	}
+	if action, ok := p.Tool("shell:git push origin main"); !ok || action != ActionDeny {
+		t.Errorf("git push = %v %v, want deny", action, ok)
+	}
+	if _, ok := p.Tool("shell:git status"); ok {
+		t.Errorf("git status should have no opinion")
+	}
+	if _, ok := p.Decide(CreatePermissionRequest{ToolName: "bash", Params: "git status"}); ok {
+		t.Errorf("provider.use/tool.use rules must not leak into Decide")
+	}
+}
+
+func TestAgentScopedLastWins(t *testing.T) {
+	t.Parallel()
+
+	base := &fakeService{answer: true}
+	policy, err := ParsePolicy([]agentdef.PermissionRule{
+		rule("shell", "*", "ask"),
+		rule("shell", "git push *", "deny"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := NewAgentScoped(base, policy)
+
+	if svc.Request(CreatePermissionRequest{ToolName: "bash", Params: "git push origin main"}) {
+		t.Error("git push should be denied by the later rule")
+	}
+	if !svc.Request(CreatePermissionRequest{ToolName: "bash", Params: "git status"}) {
+		t.Error("git status should ask (deferring to the base service)")
+	}
+}
+
+func TestPolicyScopedToolUse(t *testing.T) {
+	t.Parallel()
+
+	base := &fakeService{answer: true}
+	policy, err := ParsePolicy([]agentdef.PermissionRule{
+		rule("tool.use", "shell:git push *", "deny"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := NewPolicyScoped(base, policy)
+
+	if svc.Request(CreatePermissionRequest{ToolName: "bash", Params: cmdParams{Cmd: "git push origin main"}}) {
+		t.Error("git push should be blocked by the tool.use policy")
+	}
+	if !svc.Request(CreatePermissionRequest{ToolName: "bash", Params: cmdParams{Cmd: "git status"}}) {
+		t.Error("git status should defer to the base service")
+	}
 }

@@ -85,7 +85,7 @@ A fase 5 deixou a ponte JSON como um caminho paralelo (dois arrays de precedênc
          Effect   string // "allow" | "deny" | "ask"
      }
      ```
-   - **Ordem importa** (primeira regra que casa vence). No `.md` e no JSON é lista, não mapa.
+   - **Ordem importa** (a **última** regra que casa vence, conforme a v2). No `.md` e no JSON é lista, não mapa.
    - `action: shell` (não `bash`). Aplicação real em [Spec 07](07-permissions.md); aqui só o tipo
      e o parsing. Migrar o modelo antigo de `internal/permission` (mapa → regras) sem manter os
      dois: **refazer já no formato v2**.
@@ -165,7 +165,7 @@ Evidência de mercado que sustenta o desenho (pesquisa na onda 2):
   `permissions` array ordenado; `system` inline vs corpo; `team` por subpasta; lazy mantido.
 - `config`: parse de `agents` (plural) + `agent` (singular deprecado) na mesma estrutura;
   `default_agent`/`defaultAgent`; `{env:}`/`{file:}` aplicados a `agents.*`.
-- `permission`: primeira regra que casa vence; `shell`/`edit`/`read`/`webfetch`/`task`.
+- `permission`: **última** regra que casa vence; `shell`/`edit`/`read`/`webfetch`/`task`.
 - Manual: `go build ./... && go test ./...`.
 
 ## Riscos / observações

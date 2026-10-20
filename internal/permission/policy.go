@@ -23,15 +23,17 @@ const (
 // PermissionKey) equals Action and whose value (shell command, subagent name,
 // …) matches Resource, the policy replies Effect. An empty Resource matches any
 // value, including none.
+//
+// Rules are evaluated in order and the LAST matching rule wins (opencode v2), so
+// the common shape is a catch-all first and more specific rules after it.
 type Rule struct {
 	Action   string
 	Resource string
 	Effect   Action
 }
 
-// Policy is the parsed form of an agent's permissions list (opencode v2). The
-// list is ordered and the first rule that matches a request wins, so more
-// specific rules must come first.
+// Policy is the parsed form of a permissions list (opencode v2). The list is
+// ordered and the last rule that matches a request wins.
 //
 // The zero Policy is valid and means "no opinion": every request falls through
 // to the wrapped service.
@@ -66,13 +68,18 @@ func ParsePolicy(perms []agentdef.PermissionRule) (Policy, error) {
 
 // Decide returns the action the policy dictates for a request. The second
 // result is false when the policy has nothing to say about the request, which
-// means the caller should keep its default behaviour.
+// means the caller should keep its default behaviour. The last matching rule
+// wins.
 func (p Policy) Decide(req CreatePermissionRequest) (Action, bool) {
 	if !p.HasRules {
 		return "", false
 	}
 	key := PermissionKey(req.ToolName)
 	value := targetFromParams(req.Params)
+	var (
+		effect  Action
+		matched bool
+	)
 	for _, rule := range p.rules {
 		if rule.Action != key && rule.Action != req.ToolName {
 			continue
@@ -80,18 +87,23 @@ func (p Policy) Decide(req CreatePermissionRequest) (Action, bool) {
 		if rule.Resource != "" && !MatchWildcard(rule.Resource, value) {
 			continue
 		}
-		return rule.Effect, true
+		effect, matched = rule.Effect, true
 	}
-	return "", false
+	return effect, matched
 }
 
 // Task returns the action the policy dictates for delegating work to the
 // subagent with the given name. It reads the rules whose Action is "task" and
 // whose Resource matches the name; a false second result means "no opinion".
+// The last matching rule wins.
 func (p Policy) Task(subagent string) (Action, bool) {
 	if !p.HasRules {
 		return "", false
 	}
+	var (
+		effect  Action
+		matched bool
+	)
 	for _, rule := range p.rules {
 		if rule.Action != "task" {
 			continue
@@ -99,9 +111,45 @@ func (p Policy) Task(subagent string) (Action, bool) {
 		if rule.Resource != "" && !MatchWildcard(rule.Resource, subagent) {
 			continue
 		}
-		return rule.Effect, true
+		effect, matched = rule.Effect, true
 	}
-	return "", false
+	return effect, matched
+}
+
+// Provider returns the action the policies dictate for using the named
+// provider (policy action "provider.use"). A false second result means no
+// opinion. Last matching rule wins.
+func (p Policy) Provider(provider string) (Action, bool) {
+	return p.decideNamed("provider.use", provider)
+}
+
+// Tool returns the action the policies dictate for using a tool, where target
+// is "tool" or "tool:value" (for example "shell:git push *", policy action
+// "tool.use"). A false second result means no opinion. Last matching rule wins.
+func (p Policy) Tool(target string) (Action, bool) {
+	return p.decideNamed("tool.use", target)
+}
+
+// decideNamed evaluates rules whose Action equals name, matching Resource
+// against value; the last matching rule wins.
+func (p Policy) decideNamed(name, value string) (Action, bool) {
+	if !p.HasRules {
+		return "", false
+	}
+	var (
+		effect  Action
+		matched bool
+	)
+	for _, rule := range p.rules {
+		if rule.Action != name {
+			continue
+		}
+		if rule.Resource != "" && !MatchWildcard(rule.Resource, value) {
+			continue
+		}
+		effect, matched = rule.Effect, true
+	}
+	return effect, matched
 }
 
 // PermissionKey maps a tool name to the permission key gating it, mirroring the
