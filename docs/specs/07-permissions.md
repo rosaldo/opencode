@@ -1,97 +1,100 @@
-# Spec 07 — Permissions: regras globais, globs por recurso e gating ampliado
+# Spec 07 — Permissions e Policies v2: regras por recurso e precedência
 
-Onda 2. Depende de: 11 (chave `permission` na config). Toca 09 (prompt de permissão na TUI).
+Onda 2. Depende de: 11 (config v2). Toca 09 (prompt de permissão na TUI).
 
 ## Objetivo
 
-Ir além do permission por-agente atual: regras **globais** na config, chaves por **tool** com
-**globs de recurso** (comando/path/URL/query), `external_directory`, e gating dos tools que hoje
-não passam por permissão (read/glob/grep/view/webfetch/websearch/diagnostics).
+Adotar o modelo v2: **`permissions`** como lista **ordenada** de regras `{action, resource,
+effect}` (a última que casa vence) e **`policies`** como camada de governança (`provider.use`,
+`tool.use`, bloqueio de MCP/skill/plugin), com precedência entre arquivos de config.
 
 ## Estado atual (pós-fase 5)
 
 - `Service` (`internal/permission/permission.go:35-42`): `Grant/GrantPersistant/Deny/Request/
-  AutoApproveSession`; `Ask` bloqueante por canal.
-- `Policy` allow|ask|deny com wildcard para **bash**/**task**: `internal/permission/policy.go:11-22`,
-  `PermissionKey` `:164`.
-- Escopo por-agente (deny final): `internal/permission/scoped.go:20-40`, ligado em
-  `internal/llm/agent/tools_filter.go:76-80`; config `agent.<name>.permissions`.
-- Gateados: bash (`tools/bash.go:274`), edit/write/patch (`tools/edit.go:204,315,435`), fetch
-  (`tools/fetch.go:124`), MCP (`llm/agent/mcp-tools.go:92`).
-- Diálogo TUI: `internal/tui/components/dialog/permission.go` (a/s/d; detalhes por tool).
-- AUSENTE: `permission` global na config; globs de recurso (path/comando/URL); `external_directory`;
-  gating de read/glob/grep/view/webfetch/websearch.
+  AutoApproveSession`.
+- `Policy` allow|ask|deny com wildcard para **bash**/**task** (`internal/permission/policy.go`);
+  escopo por-agente (`scoped.go`), ligado em `tools_filter.go`.
+- Gateados: bash, edit/write/patch, fetch, MCP.
+- AUSENTE (v2): `permissions` array, `policies`, ações por recurso (path/comando/URL/query),
+  `external_directory`, gating de read/glob/grep/websearch, precedência entre arquivos.
 
 ## Design
 
-### Config: chave `permission`
+### `permissions` (array ordenado)
 
 ```jsonc
 {
-  "permission": {
-    "*": "ask",
-    "bash": { "*": "ask", "git status *": "allow", "git push *": "deny" },
-    "edit": { "*": "deny", "packages/**/*.go": "allow" },
-    "webfetch": { "*": "ask", "https://en.wikipedia.org/*": "allow" },
-    "external_directory": { "~/projects/personal/**": "allow" }
-  },
-  "agent": { "reviewer": { "permission": { "edit": "deny" } } }
+  "permissions": [
+    { "action": "shell", "resource": "*", "effect": "ask" },
+    { "action": "shell", "resource": "git push *", "effect": "deny" },
+    { "action": "edit",  "resource": "packages/docs/*.mdx", "effect": "allow" },
+    { "action": "read",  "resource": "*.env", "effect": "deny" }
+  ],
+  "agents": {
+    "reviewer": {
+      "permissions": [{ "action": "edit", "resource": "*", "effect": "deny" }]
+    }
+  }
 }
 ```
 
-- Regras avaliadas por **pattern match**, **a última que casa vence** (como no TS).
-- Valor pode ser string (`"ask"`) ou mapa recurso→efeito.
-- Precedência: regra do agente (`agent.<n>.permission`) > regra global; dentro de um nível, a
-  última regra de recurso que casa.
+- **Última regra que casa vence**; matching `*` (qualquer, incl. `/`) e `?` (um char).
+- Ações (built-in) e recurso:
+  `read` (path), `edit` (path de edit/write/patch), `glob` (pattern), `grep` (regex),
+  `shell` (comando; compostos podem gerar várias), `subagent` (id do agente),
+  `skill` (id), `question` (`*`), `webfetch` (URL), `websearch` (query),
+  `external_directory` (boundary externo), `<server>_<tool>` (`*` p/ MCP), `execute` (`*`).
+- `read` default allow; `external_directory` habilita paths fora do workspace herdando defaults.
+- Precedência: topo < `agents.<id>.permissions` (mais específico vence).
 
-### Modelo de política
+### `policies` (governança)
 
-- Generalizar `permission.Policy` para receber uma lista ordenada de regras por `PermissionKey`
-  (`action`, `resource`, `effect`), com matching `*`/`?`, aplicado ao **recurso** de cada tool:
-  - bash → string do comando;
-  - edit/write/patch → path normalizado;
-  - webfetch → URL; websearch → query;
-  - glob → pattern; grep → regex;
-  - read → path (local ou absoluto externo);
-  - `external_directory` → boundary canônico;
-  - `<server>_<tool>` → `*` para MCP.
-- `read` default = allow; `external_directory` habilita paths fora do workspace herdando os
-  defaults.
+```jsonc
+{
+  "policies": [
+    { "action": "provider.use", "resource": "*", "effect": "deny" },
+    { "action": "provider.use", "resource": "anthropic", "effect": "allow" },
+    { "action": "tool.use", "resource": "shell:git push *", "effect": "deny" }
+  ]
+}
+```
+
+- Ações de policy: `provider.use`, `tool.use`, e bloqueio de MCP/skill/plugin.
+- Precedência entre arquivos: global e projeto avaliam em ordem reversa; **sistema** vence todos
+  (v2). Config gerenciada (MDM/`/etc/opencode`) tem a maior precedência e não é sobrescrita.
 
 ### Gating ampliado
 
-- Ligar permissão em read/glob/grep/view/webfetch/websearch/diagnostics, com defaults
-  compatíveis (allow) para não quebrar fluxo.
-- `ask` = allow na delegação permanece (spec 03); reavaliar se `permission.subagent` entrar.
+- Ligar read/glob/grep/view/webfetch/websearch/diagnostics à permissão, defaults compatíveis
+  (allow). Manter `ask`=allow na delegação até `subagent` entrar.
 
 ## Mudanças (arquivos)
 
-- `internal/config/config.go`: `Config.Permission` (global) + parse de regras por tool;
-  `agent.<n>.permission` (compat com `permissions` atual).
-- `internal/permission/policy.go` + `scoped.go`: regras ordenadas, matching de recurso, merge
-  global×agente.
-- Tools `read/glob/grep/view/webfetch/websearch/diagnostics`: consultar permissão.
-- `internal/llm/agent/tools_filter.go`: injetar a política efetiva (global + agente).
-- `opencode-schema.json`, `cmd/schema/main.go`: chave `permission`.
+- `internal/config/config.go`: `Permissions []PermissionRule`, `Policies []PolicyRule`.
+- `internal/permission/policy.go` + `scoped.go`: regras ordenadas, matching por recurso, merge
+  topo×agente, avaliação de policies.
+- Tools read/glob/grep/view/webfetch/websearch/diagnostics: consultar permissão.
+- `internal/llm/agent/tools_filter.go`: política efetiva (topo + agente + policies).
+- `opencode-schema.json`, `cmd/schema/main.go`.
 
 ## Critérios de aceite
 
-1. Config antiga e per-agent atual continuam funcionando (compat).
-2. `permission.bash["git push *"] = deny` bloqueia push; `allow` libera; `ask` abre diálogo.
-3. `permission.edit` com glob de path concede/nega por arquivo.
-4. `external_directory` libera leitura fora do workspace; edit fora continua negado salvo regra.
-5. read/glob/grep/webfetch passam a ser gateáveis, default allow.
-6. Última regra que casa vence (testado).
-7. Schema valida `permission`.
+1. Modelo atual (`agent.<n>.permissions`) continua funcionando (compat).
+2. `permissions: [{shell, "*", ask}, {shell, "git push *", deny}]` bloqueia push, pergunta no resto.
+3. `edit` com glob de path concede/nega por arquivo; última regra vence.
+4. `external_directory` libera leitura fora do workspace; edit segue regras.
+5. `policies provider.use` nega/permite uso de provider; `tool.use` nega `shell:...`.
+6. read/glob/grep/webfetch gateáveis, default allow.
+7. Schema valida `permissions` e `policies`.
 
 ## Testes
 
-- `internal/permission`: tabela de matching (última regra vence, globs de path/comando/URL).
-- `internal/config`: parse de `permission` global e por-agente, precedência.
-- `internal/llm/agent`: política efetiva por agente.
+- `internal/permission`: matching (última regra vence, globs path/comando/URL), policies.
+- `internal/config`: parse de `permissions`/`policies`, precedência topo×agente.
+- `internal/llm/agent`: política efetiva.
 
 ## Riscos
 
-- Compat: manter `agent.<n>.permissions` (onda 1) funcionando — mapear para o novo modelo.
-- Defaults permissivos são intencionais; mudar defaults pode surpreender — documentar.
-- Ferramentas que hoje não têm "recurso" precisam de definição clara de recurso.
+- Compat: mapear `agent.<n>.permissions` (mapa, onda 1) para o array v2.
+- Nome `shell` vs `bash` atual — aceitar ambos na transição.
+- Defaults permissivos são intencionais; documentar.

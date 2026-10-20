@@ -1,80 +1,107 @@
-# Spec 11 — Config: chaves faltantes, schema gerador e TUI config
+# Spec 11 — Config v2: formato, localização, interpolação e chaves
 
-Onda 2. Depende de: —. É pré-requisito de 07 (permission), 09 (keybinds), 10 (plugin).
+Onda 2. Depende de: —. É a **base** da onda 2 (as demais specs consomem esta).
 
 ## Objetivo
 
-Alinhar o conjunto de chaves de config com o TS e consertar o gerador de schema: hoje faltam
-`instructions`, `keybinds`, `share`, `autoupdate`, `permissions`, `formatters`/`formatter`, e o
-gerador (`cmd/schema/main.go`) não emite `agent`/`defaultAgent`/`shell`/`autoCompact`.
+Aproximar a configuração do fork Go do formato **v2** do opencode: arquivo `opencode.json`/
+`opencode.jsonc`, `$schema: https://opencode.ai/config.json`, localização e precedência de
+diretórios, interpolação `{env:}`/`{file:}` e o conjunto de chaves v2.
 
 ## Estado atual (pós-fase 5)
 
-- Fontes: `.opencode.json` global (`$HOME`, `$XDG_CONFIG_HOME/opencode`, `$HOME/.config/opencode`)
-  + `<wd>/.opencode.json`; env `OPENCODE_*`; defaults em `setDefaults`.
-- Chaves parseadas (`Config` struct): `data, wd, mcpServers, providers, lsp, agents, agent,
-  defaultAgent, debug, debugLSP, contextPaths, tui, shell, autoCompact`.
-- `agent.<name>` = `AgentDefinition` (onda 1, `{file:}` incluso).
-- Persistência: `UpdateAgentModel`, `UpdateTheme` (escrevem no `.opencode.json`).
-- Schema gerado por `cmd/schema/main.go:38-307` lista só `data, wd, debug, debugLSP, contextPaths,
-  tui, mcpServers, providers, agents, lsp` — **não** emite `agent`, `defaultAgent`, `shell`,
-  `autoCompact`. O `opencode-schema.json` commitado foi editado à mão na spec 05.
-- AUSENTE: `instructions`, `keybinds`, `share`, `autoupdate`, `permission` (global), `formatters`.
+- Arquivo: `.opencode.json` (viper, `internal/config/config.go`), buscado em
+  `$HOME`, `$XDG_CONFIG_HOME/opencode`, `$HOME/.config/opencode`, merge com `<wd>/.opencode.json`.
+- Chaves: `data, wd, mcpServers, providers, lsp, agents, agent, defaultAgent, debug, debugLSP,
+  contextPaths, tui, shell, autoCompact`.
+- `agent.<name>` = `AgentDefinition` (onda 1) com `{file:}` no **prompt**.
+- Schema gerado por `cmd/schema/main.go` — **desatualizado** (não emite `agent`/`defaultAgent`/
+  `shell`/`autoCompact`); `opencode-schema.json` foi editado à mão.
+- AUSENTE (v2): `opencode.json(c)`, `$schema` oficial, `{env:}`, `commands`, `instructions`,
+  `references`, `skills`, `formatter`, `watcher`, `snapshots`, `media`, `tool_output`,
+  `websearch`, `compaction`, `warming`, `worktree`, `update`, `username`, `small_model`,
+  `default_agent` (snake_case), `mcp`, `permissions`, `policies`, `plugins`.
 
 ## Design
 
-### Chaves novas (nesta fase)
+### Formato e localização
 
-```jsonc
-{
-  "instructions": ["docs/AGENTS.md", "~/.config/opencode/rules/*.md"],
-  "formatter": { "golang": { "command": ["gofmt", "-w", "$FILE"], "extensions": [".go"] } },
-  "autoupdate": true,
-  "keybinds": { },        // usado pela spec 09
-  "permission": { },      // usado pela spec 07 (parse, sem lógica aqui)
-  "share": "manual"       // usado pela spec 12
-}
-```
+- Aceitar `opencode.json` e `opencode.jsonc` (comentários e vírgulas finais). JSONC exige um
+  parser tolerante (ex.: `github.com/tailscale/hujson` ou remoção de comentários).
+- Precedência (do menor para o maior), conforme v2:
+  1. global `~/.config/opencode/opencode.json(c)`
+  2. `opencode.json(c)` diretos do mais distante ao mais próximo (subida até a raiz)
+  3. `.opencode/opencode.json(c)` (vence os diretos no mesmo nível)
+  4. sistema `/etc/opencode/opencode.json(c)` (maior precedência)
+- **Back-compat**: continuar aceitando `.opencode.json` (formato atual) com a mesma precedência de
+  hoje; a adoção do novo formato é aditiva. Documentar se `.opencode.json` legado continua lido.
 
-- `instructions`: lista de caminhos (globs, `~`) cujo conteúdo entra no contexto como AGENTS.md.
-  Coordenar com `contextPaths` existente (talvez unificar/aliás).
-- `formatter`: formatters por linguagem (command/extensions/disabled), aplicados após edit.
-- `autoupdate`: liga/desliga checagem de atualização (sem rede nesta fase; só a chave + gate).
-- `keybinds`, `permission`, `share`: **parse e validação** nesta fase; comportamento nas specs
-  09/07/12.
+### Interpolação de strings
+
+- `{env:VAR}` → valor do env (vazio se ausente).
+- `{file:path}` → conteúdo do arquivo; path relativo ao diretório do config, absoluto, ou `~/`.
+  Vazio se não existir.
+- Aplicar em **qualquer string** do config (não só prompt). Generalizar o `resolvePrompt` da onda 1
+  para um `interpolate(s, baseDir)` reusável.
+
+### Chaves v2
+
+- **Núcleo de seleção**: `model` (`provider/model`), `small_model`, `default_agent`.
+- **`agents`** como mapa único (builtin + custom) — reconcilia com o `agent`/`agents` da onda 1;
+  manter ambos por compat, `agents` é o nome v2.
+- **`providers`**: `models` (`modelID`, `name`, `limit.{context,output}`), `settings`
+  (`apiKey`, `baseURL`, `headers`, `transport`), variantes — spec 06.
+- **`permissions`** (array) e **`policies`** — spec 07.
+- **`mcp.servers`** — spec 08.
+- **`plugins`** — spec 10.
+- **`commands`** (templates de slash command), **`instructions`** (arquivos/globs/URLs de
+  instrução), **`references`** (dirs/repos), **`skills`** (dirs/URLs).
+- **`formatter`** (bool ou mapa de formatters), **`watcher.ignore`**, **`snapshots`** (bool),
+  **`media.image`** (resize/limites), **`tool_output.{max_lines,max_bytes}`**,
+  **`websearch.provider`**, **`compaction.{auto,keep,buffer}`**, **`warming`**,
+  **`worktree.directory`**, **`update`** (`disable|notify|auto`), **`username`**, **`shell`**.
+
+Nesta fase: **parse + validação + defaults** de todas; **comportamento** das que têm spec própria
+fica lá; as demais (commands/references/skills/formatter/watcher/snapshots/media/tool_output/
+websearch/compaction/warming/worktree/update/username) podem ser implementadas aqui ou
+subdivididas em 11b/11c.
 
 ### Gerador de schema
 
-- Reescrever `cmd/schema/main.go` para refletir **todo** o `Config` (incl. `agent`, `defaultAgent`,
-  `shell`, `autoCompact`, e as novas chaves), eliminando a edição manual do `opencode-schema.json`.
-- Idealmente o schema é derivado do struct (reflection/tags) para não voltar a divergir.
-- Adicionar um **teste** que falha se `opencode-schema.json` divergir do gerador.
+- Reescrever `cmd/schema/main.go` para emitir **todo** o `Config` v2 (incluir `agent`,
+  `default_agent`, `shell`, `autoCompact` e as chaves novas), eliminando a edição manual.
+- Preferir derivar de tags/reflection; se manual, **obrigatório** um teste de drift que falhe
+  quando `opencode-schema.json` divergir do gerador.
+- Publicar/versionar um `opencode-schema.json` compatível com a v2.
 
 ## Mudanças (arquivos)
 
-- `internal/config/config.go`: `Instructions`, `Formatter`, `Autoupdate`, `Keybinds`,
-  `Permission`, `Share`.
-- `cmd/schema/main.go` + `opencode-schema.json`: gerar todas as chaves.
-- `internal/llm/prompt` (context): incluir `instructions` no contexto.
-- Novo `internal/format`/`internal/llm/tools`: aplicar `formatter` após edit (se entrar no escopo).
+- `internal/config/config.go`: localização/formato novos, `interpolate`, structs e chaves v2,
+  `default_agent` (alias de `defaultAgent`).
+- Novo `internal/config/jsonc.go` (ou dep) para JSONC.
+- `cmd/schema/main.go` + `opencode-schema.json`: gerador completo + teste de drift.
+- `internal/llm/prompt`: consumir `instructions` no contexto.
 
 ## Critérios de aceite
 
-1. Config antiga carrega igual.
-2. `instructions` adiciona arquivos ao contexto do modelo.
-3. `formatter.golang` roda `gofmt` após editar `.go`.
-4. `opencode-schema.json` contém `agent`, `defaultAgent`, `shell`, `autoCompact` e as chaves novas.
-5. Teste de drift do schema passa (schema == gerador).
-6. Chaves usadas por 07/09/12 são parseadas e validadas (mesmo sem comportamento).
+1. Config no formato atual (`.opencode.json`) carrega idêntica (back-compat).
+2. `opencode.json` e `opencode.jsonc` (com comentários) são lidos; precedência de diretórios da v2
+   respeitada (testado).
+3. `{env:VAR}` e `{file:path}` funcionam em strings arbitrárias (não só prompt).
+4. `model`, `small_model` e `default_agent` alteram primário/titler/agente default.
+5. `opencode-schema.json` contém `agent`, `default_agent`, `shell`, `autoCompact` e as chaves v2.
+6. Teste de drift do schema passa (schema == gerador).
+7. Chaves de 06/07/08/10 são parseadas e validadas (mesmo sem comportamento aqui).
 
 ## Testes
 
-- `internal/config`: parse de cada chave nova + validação.
-- `cmd/schema`: teste de drift (gerar e comparar com o arquivo commitado).
+- `internal/config`: JSONC, precedência de diretórios, `{env:}`/`{file:}`, cada chave nova.
+- `cmd/schema`: drift (gerar e comparar com o arquivo commitado).
 
 ## Riscos
 
-- `instructions` vs `contextPaths`: definir uma semântica única para evitar confusão.
-- Formatter executa comandos externos — interage com permissões (spec 07); decidir gate.
-- Derivar schema por reflection pode ser trabalhoso; aceitável manter geração manual **desde que
-  com teste de drift**.
+- JSONC + precedência multi-diretório maior que o modelo viper atual — pode exigir trocar a
+  estratégia de merge (hoje `viper.MergeConfigMap`).
+- Duplicação `agent`/`agents` na transição — mapear com cuidado.
+- Escopo amplo: dividir em 11a (formato/localização/interpolação), 11b (chaves núcleo),
+  11c (chaves auxiliares) e 11d (schema gerador).

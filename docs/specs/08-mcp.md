@@ -1,12 +1,12 @@
-# Spec 08 — MCP: HTTP/streamable, resources/prompts, OAuth e ciclo de vida
+# Spec 08 — MCP v2: `mcp.servers` local/remote, HTTP, resources/prompts, OAuth
 
-Onda 2. Depende de: 11 (chave `mcp` na config, opcional). Toca 09 (gestão na TUI).
+Onda 2. Depende de: 11 (config v2). Toca 09 (gestão na TUI).
 
 ## Objetivo
 
-Modernizar o suporte a MCP: transporte HTTP/streamable além de stdio/sse, uso de **resources** e
-**prompts** além de tools, OAuth para servidores remotos, **ciclo de vida** (restart/enable/disable),
-`timeout` e escopo por-agente.
+Adotar o modelo de MCP v2 (`mcp.servers` com `type: local|remote`, `timeout`), transporte
+HTTP/streamable além de stdio/sse, uso de **resources**/**prompts**, OAuth para remotos e
+**ciclo de vida** (restart/enable/disable).
 
 ## Estado atual (pós-fase 5)
 
@@ -36,8 +36,8 @@ Modernizar o suporte a MCP: transporte HTTP/streamable além de stdio/sse, uso d
 ```
 
 - Compat: manter `mcpServers` atual (command/type stdio|sse/env/headers/url) **e** aceitar o novo
-  formato (`type: local|remote`, `command` como array, `enabled`, `timeout` global/por-server).
-  Preferir **adicionar** `enabled`/`timeout` ao `MCPServer` atual e mapear `local|remote`.
+  formato v2 (`mcp.servers` com `type: local|remote`, `command` como array, `enabled`, `timeout`
+  global/por-server). Mapear `local`→stdio, `remote`→http/sse.
 
 ### Transportes
 

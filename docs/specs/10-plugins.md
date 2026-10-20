@@ -1,6 +1,6 @@
 # Spec 10 — Plugins: hooks, custom tools e integrações
 
-Onda 2. Depende de: 11 (chave `plugin`) e 08 (hooks de tool/MCP). Ordem: por último antes de 12.
+Onda 2. Depende de: 11 (chave `plugins`) e 08 (hooks de tool/MCP). Ordem: por último antes de 12.
 
 ## Objetivo
 
@@ -19,14 +19,14 @@ hooks de ciclo de vida e custom tools. No Go não há runtime JS — definir o m
 
 ```jsonc
 {
-  "plugin": [
+  "plugins": [
     "opencode-example-plugin",
     { "package": "./plugins/local", "options": { "enabled": true } }
   ]
 }
 ```
 
-- `Config.Plugin []PluginSpec` (json `plugin`), ordenado; `"-name"` desabilita.
+- `Config.Plugins []PluginSpec` (json `plugins`), ordenado; `"-name"` desabilita.
 - Descoberta local em `<project>/.opencode/plugins/` e `~/.config/opencode/plugins/`.
 
 ### Modelo de execução (Go)
@@ -60,11 +60,11 @@ Recomendação: (A) como base, com um manifesto (`plugin.json`) declarando hooks
 - `internal/llm/agent/agent.go`/`tools_filter.go`: injetar hooks e tools de plugins.
 - `cmd/root.go`: carregar plugins no boot, ligar hooks.
 - `internal/tui`: diálogo de plugins (listar/instalar/toggle) — coordena com 09.
-- `opencode-schema.json`, `cmd/schema/main.go`: `plugin`.
+- `opencode-schema.json`, `cmd/schema/main.go`: `plugins`.
 
 ## Critérios de aceite
 
-1. Sem `plugin` na config, comportamento inalterado.
+1. Sem `plugins` na config, comportamento inalterado.
 2. Plugin local (executável + manifesto) é carregado e seus hooks disparam.
 3. Hook `tool.before_execute` consegue **negar** uma chamada de tool.
 4. Tool declarada por plugin aparece para o modelo e passa por permissão.

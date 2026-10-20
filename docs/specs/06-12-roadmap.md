@@ -1,42 +1,64 @@
-# Specs — Onda 2: paridade com o opencode TS (1.19.x)
+# Specs — Onda 2: paridade com o opencode TS (v2)
 
 Índice da segunda onda. **Leia o `00-index.md` primeiro** (onda 1: agentes dinâmicos, fases 1–5,
 `Verificado`).
 
-## Objetivo
+## Alvo
 
-Fechar as lacunas entre o fork Go (`v0.0.55`) e o opencode TS `1.19.x` nas áreas que **não** são
-agentes: **providers, permissions, MCP, TUI, plugins, config e integração opencode.ai**.
+Paridade com a geração **v2** do opencode TS, conforme o schema oficial
+`https://opencode.ai/config.json` e os guias `opencode.ai/v2/docs/*`. O objetivo é fechar as
+lacunas do fork Go (`v0.0.55`) nas áreas que **não** são agentes: **providers, permissions (+
+policies), MCP, TUI, plugins, config e integração opencode.ai**.
+
+> **Atenção — alvo é a v2, não a 1.19.3.** Nomes de chaves e formatos mudaram entre a 1.19.3, a v1
+> recente e a v2. As specs abaixo miram a **v2**. Um resumo das diferenças que importam está na
+> seção "Schema v2 — convenções" no fim deste arquivo.
 
 Diagnóstico (inventário no HEAD pós-fase-5, ver seção "Estado atual" de cada spec):
 
 | Área | Estado no Go | Spec |
 |------|--------------|------|
-| Providers | PARCIAL — 11 providers hard-coded, sem catálogo dinâmico nem `baseURL/headers/SDK custom` na config | [06](06-providers.md) |
-| Permissions | PARCIAL — só por-agente; falta `permission` global, globs por recurso, `external_directory`, gating de read/glob/grep/webfetch | [07](07-permissions.md) |
-| MCP | PARCIAL — stdio/sse; falta HTTP/streamable, resources/prompts, OAuth, ciclo de vida, gestão na TUI | [08](08-mcp.md) |
-| TUI | PARCIAL — sem mouse, sem keybinds configuráveis, sem busca/rename/delete de sessão, sem paste de imagem | [09](09-tui.md) |
+| Providers | PARCIAL — 11 providers hard-coded; falta `providers.<p>.models/settings/headers` e `model`/`small_model` | [06](06-providers.md) |
+| Permissions/Policies | PARCIAL — só por-agente; falta `permissions` (array de regras por recurso) e `policies` | [07](07-permissions.md) |
+| MCP | PARCIAL — stdio/sse; falta `mcp.servers` `local/remote`, HTTP/streamable, resources/prompts, OAuth, ciclo de vida | [08](08-mcp.md) |
+| TUI | PARCIAL — sem mouse, sem keybinds configuráveis, sem busca/rename/delete de sessão, sem paste | [09](09-tui.md) |
 | Plugins | AUSENTE — nenhum mecanismo de plugin/hook | [10](10-plugins.md) |
-| Config | PARCIAL — faltam `instructions`, `keybinds`, `share`, `autoupdate`, `permissions`, `formatters`; schema gerador desatualizado | [11](11-config.md) |
-| opencode.ai | AUSENTE — sem share, sem serve/web, sem ACP, sem zen | [12](12-opencode-ai.md) |
+| Config | PARCIAL — formato/localização divergentes; faltam muitas chaves v2 e o gerador de schema está desatualizado | [11](11-config.md) |
+| opencode.ai | AUSENTE — sem share, serve/web, ACP | [12](12-opencode-ai.md) |
 
 ## Ordem sugerida
 
-Dependências leves; a ordem abaixo minimiza retrabalho:
-
-1. **06 Providers** — base para tudo (modelos por provider, SDKs, `small_model`).
-2. **11 Config** — estende o schema/config que as demais fases consomem (permission global,
-   keybinds, instructions).
-3. **07 Permissions** — depende de 11 (chave `permission` na config).
-4. **08 MCP** — independente; depende de 11 só para `mcp` na config.
-5. **09 TUI** — depende de 11 (keybinds) e toca 07 (prompt de permissão).
-6. **10 Plugins** — depende de 11 (chave `plugin`) e de 08 (hooks de tool).
-7. **12 opencode.ai** — por último; share/serve/web/ACP dependem de quase tudo.
+1. **11 Config v2** — base: `opencode.json(c)`, `$schema`, `{env:}`/`{file:}`, chaves v2, gerador
+   de schema. Tudo depende disto.
+2. **06 Providers** — `providers.<p>.models/settings`, `model`/`small_model`, catálogo.
+3. **07 Permissions + Policies** — `permissions` array + `policies`.
+4. **08 MCP** — `mcp.servers` local/remote, HTTP, lifecycle.
+5. **09 TUI** — keybinds (`tui.json`/`cli.json`), mouse, sessões, paste.
+6. **10 Plugins** — loader, protocolo, hooks, tools.
+7. **12 opencode.ai** — serve/share/ACP (e web).
 
 ## Convenções
 
-- Seguir o protocolo do `00-index.md`: uma fase por spec, `go build ./... && go test ./...` ao
-  concluir, e atualizar o **Status** no índice só com testes verdes.
-- Manter a direção de dependências de `internal/agentdef` (nada de `agentdef → config`).
-- Back-compat obrigatória: nenhuma chave existente muda de semântica.
-- Documentar desvios na seção "Implementação (fase N)" de cada spec, como na onda 1.
+- Protocolo do `00-index.md`: uma fase por spec, `go build ./... && go test ./...` ao concluir,
+  atualizar o **Status** só com testes verdes.
+- Manter a direção de dependências de `internal/agentdef`.
+- Back-compat obrigatória com o formato atual (`.opencode.json` + `agents`/`agent`).
+
+## Schema v2 — convenções (diferenças que importam)
+
+| Tema | v1 atual no Go | v2 (alvo) |
+|------|----------------|-----------|
+| Arquivo | `.opencode.json` | `opencode.json` / `opencode.jsonc` (`$schema: https://opencode.ai/config.json`) |
+| Diretórios | `$HOME`, XDG/opencode | global `~/.config/opencode/`, projeto na raiz **e** `.opencode/`, sistema `/etc/opencode` |
+| Agente default | `defaultAgent` | `default_agent` |
+| Agentes | `agents` (builtins) + `agent` (custom) | `agents` (mapa único, builtin+custom) |
+| Permissões | `agent.<n>.permissions` (mapa) | `permissions` (array `{action,resource,effect}`) |
+| Políticas | — | `policies` (`provider.use`, `tool.use`, MCP/skill/plugin) |
+| Ação shell | `bash` | `shell` |
+| MCP | `mcpServers` | `mcp.servers` (`type: local\|remote`, `timeout`) |
+| Providers | `providers.<p>.apiKey/disabled` | `providers.<p>.models/settings/headers` |
+| Plugins | — | `plugins` |
+| Modelos | `agents.<n>.model` | topo `model` / `small_model`, e `providers.<p>.models` |
+| Interpolação | — | `{env:VAR}` e `{file:path}` em strings |
+| Outras chaves | — | `commands`, `instructions`, `references`, `skills`, `formatter`, `watcher`, `snapshots`, `media`, `tool_output`, `websearch`, `compaction`, `warming`, `worktree`, `update`, `username`, `shell` |
+

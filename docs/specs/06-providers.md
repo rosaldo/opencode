@@ -1,96 +1,87 @@
-# Spec 06 — Providers: catálogo dinâmico, SDKs customizados e opções
+# Spec 06 — Providers v2: models/settings, endpoints e catálogo
 
-Onda 2. Depende de: —. É pré-requisito de 12 (share/zen consome providers).
+Onda 2. Depende de: 11 (config v2). É referência para 12.
 
 ## Objetivo
 
-Aproximar o modelo de providers do opencode TS: candidatos/configuração de provider declaráveis,
-modelos descobertos dinamicamente, endpoints OpenAI-compatíveis customizados (`baseURL`, `headers`,
-`npm`/SDK) e um "small model" separado. Hoje tudo é hard-coded.
+Aproximar o modelo de providers do opencode v2: `providers.<id>.models` (declarar/sobrescrever
+modelos), `providers.<id>.settings` (`apiKey`, `baseURL`, `headers`, `transport`), catálogo de
+modelos conhecidos e seleção por topo `model`/`small_model`.
 
 ## Estado atual (pós-fase 5)
 
-- 11 providers + mock, por `switch` em `internal/llm/provider/provider.go:86`
-  (`anthropic, azure, copilot, gemini, groq, local, bedrock, openai, openrouter, vertexai, xai`).
-- Modelos 100% estáticos em `internal/llm/models/*.go` (`SupportedModels`, `models.go:50`),
-  popularidade em `models.go:38-48`.
-- Referências `provider/model`: `internal/llm/models/resolve.go:8`.
-- `Provider` na config tem só `apiKey`/`disabled` (`internal/config/config.go`).
-- Endpoint local descoberto via `LOCAL_ENDPOINT` (`internal/llm/models/local.go:24-57`).
-- AUSENTE: catálogo `models.dev`, `baseURL`, `headers` por provider, catálogo de modelos por
-  provider na config, `small_model`, OAuth de device-code/ChatGPT (codex), `apiKeyHelper`.
+- 11 providers + mock por `switch` em `internal/llm/provider/provider.go:86` (`anthropic, azure,
+  copilot, gemini, groq, local, bedrock, openai, openrouter, vertexai, xai`).
+- `SupportedModels` estático (`internal/llm/models/models.go:50`); `ResolveModelID`
+  (`internal/llm/models/resolve.go:8`).
+- `Provider` na config só tem `apiKey`/`disabled`; baseURL/headers **hard-coded**
+  (`provider.go:119,137,149,157`; `openai.go:396-404`).
+- Endpoint local por `LOCAL_ENDPOINT` (`models/local.go:24-57`).
+- AUSENTE (v2): `providers.<p>.models/settings/headers`, topo `model`/`small_model`, variantes,
+  `transport: websocket`, catálogo de modelos.
 
 ## Design
 
-### Config: bloco `provider`
+### Config v2
 
 ```jsonc
 {
-  "provider": {
+  "model": "anthropic/claude-sonnet-4-5",
+  "small_model": "anthropic/claude-haiku-4-5",
+  "providers": {
     "openai": {
-      "options": { "baseURL": "https://proxy.local/v1", "headers": { "X-Tenant": "acme" } }
-    },
-    "myprovider": {
-      "npm": "@ai-sdk/openai-compatible",   // ou "openai-compatible"
-      "options": { "baseURL": "https://api.myprovider.com/v1" },
+      "settings": { "apiKey": "{env:OPENAI_API_KEY}", "baseURL": "https://proxy/v1",
+                    "headers": { "X-Tenant": "acme" } },
       "models": {
-        "my-model": { "name": "My Model", "limit": { "context": 128000, "output": 8192 } }
+        "gpt-5.2-custom": {
+          "modelID": "gpt-5.2",
+          "name": "GPT-5.2 Custom",
+          "limit": { "context": 200000, "output": 32000 }
+        }
       }
     }
-  },
-  "model": "anthropic/claude-sonnet-4",
-  "small_model": "anthropic/claude-haiku-4"
+  }
 }
 ```
 
-- `Config` ganha `Provider map[string]ProviderConfig` (json `provider`) — distinto do atual
-  `Providers` (credenciais) — ou estende `Provider` com `Options`/`Models`. Decidir na fase
-  (preferir estender `Provider` para não duplicar).
-- `options.baseURL`/`options.headers` passam a ser repassados aos clientes (hoje hard-coded em
-  `provider.go:119,137,149,157` e `openai.go:396-404`).
-- `model`/`small_model` no topo da config substituem os defaults por provedor: `model` = primário
-  default; `small_model` = titler/summarizer.
+- `Provider` v2 ganha `Settings` (apiKey/baseURL/headers/transport) e `Models`
+  (`modelID`, `name`, `limit.{context,output}`, variantes). Manter `apiKey`/`disabled` atuais por
+  compat (mapear para `settings.apiKey`).
+- `baseURL`/`headers`/`settings` repassados aos SDKs (deixam de ser hard-coded).
+- `model`/`small_model` no topo substituem os defaults por provedor (`model` = primário,
+  `small_model` = titler/summarizer).
+- `transport: "websocket"` (settings) seleciona transporte WebSocket quando suportado.
 
 ### Catálogo de modelos
 
-- Introduzir um catálogo embutido (subset de `models.dev`) em `internal/llm/models` e permitir
-  merge de modelos declarados na config (`provider.<p>.models`).
-- `ResolveModelID` passa a considerar modelos declarados em config.
-
-### Discovery/credenciais
-
-- Manter env/API-key atual; adicionar ganchos:
-  - `apiKeyHelper` (comando que imprime a key) opcional por provider.
-  - Checagem de disponibilidade por `has*Credentials` reutilizada.
-- (Fora de escopo desta fase: OAuth device-code/ChatGPT codex — vira spec futura se necessário.)
+- Catálogo embutido (subset de `models.dev`) + merge de `providers.<p>.models` na config.
+- `ResolveModelID` considera modelos declarados; `limit.context/output` alimentam MaxTokens/context.
 
 ## Mudanças (arquivos)
 
-- `internal/config/config.go`: `Provider.Options`, `Models`, topo `model`/`small_model`.
-- `internal/llm/provider/*.go`: aceitar `baseURL`/`headers`/opções; abrir `switch` para
-  providers OpenAI-compatíveis genéricos.
-- `internal/llm/models/resolve.go` + catálogo de modelos.
-- `cmd/schema/main.go` + `opencode-schema.json`: refletir as chaves novas (e corrigir a enum de
-  providers, que hoje omite `copilot`/`xai`/`local`).
+- `internal/config/config.go`: `Provider.Settings/Models`; topo `model`/`small_model`.
+- `internal/llm/provider/*.go`: aceitar settings; abrir genérico OpenAI-compatível.
+- `internal/llm/models/resolve.go` + catálogo.
+- `cmd/schema/main.go` + `opencode-schema.json`.
 
 ## Critérios de aceite
 
-1. Config antiga carrega igual.
-2. `provider.<p>.options.baseURL/headers` afetam as requisições do provider `<p>` (verificado por
-   teste com servidor HTTP falso).
-3. Provider OpenAI-compatível customizado funciona declarando `npm: openai-compatible` + baseURL.
-4. `model`/`small_model` no topo mudam primário/titler sem tocar `agents.*`.
-5. Modelo declarado em `provider.<p>.models` é aceito por `ResolveModelID`.
+1. Config atual carrega igual.
+2. `providers.<p>.settings.baseURL/headers` afetam as requisições (teste `httptest`).
+3. Provider OpenAI-compatível custom funciona por `settings.baseURL` (+ `npm`/pacote se adotado).
+4. `model`/`small_model` mudam primário/titler sem tocar `agents`.
+5. Modelo de `providers.<p>.models` é aceito por `ResolveModelID`; `limit` afeta tokens.
 6. Schema valida as chaves novas.
 
 ## Testes
 
-- `internal/llm/provider`: teste com `httptest.Server` verificando `baseURL` + header custom.
-- `internal/config`: parse de `provider`, `model`, `small_model`.
+- `internal/llm/provider`: `httptest.Server` verificando baseURL + header.
+- `internal/config`: parse de `providers.<p>.models/settings`, `model`, `small_model`.
 - `internal/llm/models`: `ResolveModelID` com modelo de config.
 
 ## Riscos
 
-- Não duplicar `Providers` (credenciais) com `provider` (config): desenhar bem o merge.
-- Alguns SDKs (bedrock/vertex) não aceitam baseURL arbitrário — documentar limitações por provider.
-- Escopo grande; dividir em 06a (config/options) e 06b (catálogo dinâmico) se necessário.
+- Não confundir `providers` (credenciais atuais) com o v2 (models/settings): unificar com migração.
+- SDKs bedrock/vertex não aceitam baseURL arbitrário — documentar por provider.
+- `transport: websocket` depende de suporte por SDK — tratar como opcional.
+- Escopo: dividir 06a (settings/endpoints) e 06b (catálogo/variantes).
