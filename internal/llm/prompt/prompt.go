@@ -58,9 +58,13 @@ var (
 func getContextFromPaths() string {
 	onceContext.Do(func() {
 		var (
-			cfg          = config.Get()
-			workDir      = cfg.WorkingDir
-			contextPaths = cfg.ContextPaths
+			cfg     = config.Get()
+			workDir = cfg.WorkingDir
+			// contextPaths are the fork's built-in context files; the v2
+			// "instructions" key (Spec 11c) is appended so both feed the
+			// ambient context. Instruction entries are paths (or globs)
+			// resolved relative to the working directory.
+			contextPaths = append(append([]string{}, cfg.ContextPaths...), cfg.Instructions...)
 		)
 
 		contextContent = processContextPaths(workDir, contextPaths)

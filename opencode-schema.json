@@ -569,6 +569,11 @@
       },
       "type": "object"
     },
+    "autoCompact": {
+      "default": true,
+      "description": "Automatically compact the context when it is full",
+      "type": "boolean"
+    },
     "commands": {
       "additionalProperties": {
         "properties": {
@@ -1015,6 +1020,22 @@
         ]
       },
       "description": "Named local directories or Git repositories available as external context",
+      "type": "object"
+    },
+    "shell": {
+      "description": "Shell used for terminal and shell tool execution",
+      "properties": {
+        "args": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "path": {
+          "description": "Shell executable path",
+          "type": "string"
+        }
+      },
       "type": "object"
     },
     "skills": {

@@ -526,6 +526,21 @@ func generateSchema() map[string]any {
 		},
 	}
 
+	// Shell configuration (fork: path + args).
+	schema["properties"].(map[string]any)["shell"] = map[string]any{
+		"type":        "object",
+		"description": "Shell used for terminal and shell tool execution",
+		"properties": map[string]any{
+			"path": map[string]any{"type": "string", "description": "Shell executable path"},
+			"args": map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
+		},
+	}
+	schema["properties"].(map[string]any)["autoCompact"] = map[string]any{
+		"type":        "boolean",
+		"description": "Automatically compact the context when it is full",
+		"default":     true,
+	}
+
 	// Add LSP configuration
 	schema["properties"].(map[string]any)["lsp"] = map[string]any{
 		"type":        "object",

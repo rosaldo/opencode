@@ -96,6 +96,17 @@ subdivididas em 11b/11c.
 
 ## Status
 
+### 11d — gerador de schema + teste de drift — Verificado
+
+- `cmd/schema/main.go` emite **todo** o `Config` v2 (inclui `agent`, `default_agent`, `shell`,
+  `autoCompact`, `model`, `small_model` e as chaves auxiliares da 11c); enum de modelos **ordenado**
+  → saída determinística.
+- `cmd/schema/main_test.go`: teste de drift — falha quando `opencode-schema.json` diverge do
+  gerador; regenerar com `go run ./cmd/schema > opencode-schema.json`.
+- `opencode-schema.json` regenerado a partir do gerador (fim da edição manual).
+- `internal/llm/prompt`: `instructions` (11c) passa a alimentar o contexto ambiente, junto de
+  `contextPaths`.
+
 ### 11c — chaves auxiliares — Verificado
 
 - `internal/config/aux.go`: tipos e defaults das chaves auxiliares v2 — `instructions`, `commands`,
