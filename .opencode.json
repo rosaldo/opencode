@@ -19,6 +19,18 @@
       "command": "gopls"
     }
   },
+  "providers": {
+    "openai": {
+      "settings": { "apiKey": "${OPENAI_API_KEY}" },
+      "models": {
+        "gpt-4.1-mini-custom": {
+          "modelID": "gpt-4.1-mini",
+          "name": "GPT-4.1 mini (custom)",
+          "limit": { "context": 1000000, "output": 32768 }
+        }
+      }
+    }
+  },
   "instructions": ["AGENTS.md"],
   "tool_output": { "max_lines": 2000, "max_bytes": 51200 }
 }

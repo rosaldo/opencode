@@ -52,8 +52,46 @@ type AgentDefinition = agentdef.AgentConfig
 
 // Provider defines configuration for an LLM provider.
 type Provider struct {
+	// APIKey is the v1 flat spelling, kept for back-compat; it maps onto
+	// Settings.APIKey when the latter is empty.
 	APIKey   string `json:"apiKey"`
 	Disabled bool   `json:"disabled"`
+	// Settings holds the v2 connection settings. baseURL/headers/transport are
+	// passed through to the provider SDKs (Spec 06).
+	Settings ProviderSettings `json:"settings,omitempty"`
+	// Models declares/overrides models for this provider (Spec 06b).
+	Models map[string]ProviderModel `json:"models,omitempty"`
+}
+
+// ProviderSettings are the v2 per-provider connection settings.
+type ProviderSettings struct {
+	APIKey    string            `json:"apiKey,omitempty"`
+	BaseURL   string            `json:"baseURL,omitempty"`
+	Headers   map[string]string `json:"headers,omitempty"`
+	Transport string            `json:"transport,omitempty"`
+}
+
+// ProviderModel declares or overrides a model in the provider catalog (Spec 06b).
+type ProviderModel struct {
+	ModelID string         `json:"modelID,omitempty"`
+	Name    string         `json:"name,omitempty"`
+	Limit   ModelLimit     `json:"limit,omitempty"`
+	Options map[string]any `json:"options,omitempty"`
+}
+
+// ModelLimit bounds a model's tokens (v2 providers.<p>.models.<m>.limit).
+type ModelLimit struct {
+	Context int64 `json:"context,omitempty"`
+	Output  int64 `json:"output,omitempty"`
+}
+
+// EffectiveAPIKey returns the API key from Settings, falling back to the
+// deprecated flat APIKey field.
+func (p Provider) EffectiveAPIKey() string {
+	if p.Settings.APIKey != "" {
+		return p.Settings.APIKey
+	}
+	return p.APIKey
 }
 
 // Data defines storage configuration.
@@ -122,21 +160,21 @@ type Config struct {
 	// the owning spec. They are decoded from the raw merged map (aux.go) so their
 	// polymorphic JSON shapes are honoured; viper must skip them.
 
-	Instructions []string                 `json:"instructions,omitempty" mapstructure:"-"`
-	Commands     map[string]Command       `json:"commands,omitempty" mapstructure:"-"`
-	References   map[string]Reference     `json:"references,omitempty" mapstructure:"-"`
-	Skills       SkillPaths               `json:"skills,omitempty" mapstructure:"-"`
-	Formatter    FormatterConfig          `json:"formatter,omitempty" mapstructure:"-"`
-	Watcher      WatcherConfig            `json:"watcher,omitempty" mapstructure:"-"`
-	Snapshots    *bool                    `json:"snapshots,omitempty" mapstructure:"-"`
-	Media        MediaConfig              `json:"media,omitempty" mapstructure:"-"`
-	ToolOutput   ToolOutputConfig         `json:"tool_output,omitempty" mapstructure:"-"`
-	Websearch    WebsearchConfig          `json:"websearch,omitempty" mapstructure:"-"`
-	Compaction   CompactionConfig         `json:"compaction,omitempty" mapstructure:"-"`
-	Warming      WarmingConfig            `json:"warming,omitempty" mapstructure:"-"`
-	Worktree     WorktreeConfig           `json:"worktree,omitempty" mapstructure:"-"`
-	Update       string                   `json:"update,omitempty" mapstructure:"-"`
-	Username     string                   `json:"username,omitempty" mapstructure:"-"`
+	Instructions []string                  `json:"instructions,omitempty" mapstructure:"-"`
+	Commands     map[string]Command        `json:"commands,omitempty" mapstructure:"-"`
+	References   map[string]Reference      `json:"references,omitempty" mapstructure:"-"`
+	Skills       SkillPaths                `json:"skills,omitempty" mapstructure:"-"`
+	Formatter    FormatterConfig           `json:"formatter,omitempty" mapstructure:"-"`
+	Watcher      WatcherConfig             `json:"watcher,omitempty" mapstructure:"-"`
+	Snapshots    *bool                     `json:"snapshots,omitempty" mapstructure:"-"`
+	Media        MediaConfig               `json:"media,omitempty" mapstructure:"-"`
+	ToolOutput   ToolOutputConfig          `json:"tool_output,omitempty" mapstructure:"-"`
+	Websearch    WebsearchConfig           `json:"websearch,omitempty" mapstructure:"-"`
+	Compaction   CompactionConfig          `json:"compaction,omitempty" mapstructure:"-"`
+	Warming      WarmingConfig             `json:"warming,omitempty" mapstructure:"-"`
+	Worktree     WorktreeConfig            `json:"worktree,omitempty" mapstructure:"-"`
+	Update       string                    `json:"update,omitempty" mapstructure:"-"`
+	Username     string                    `json:"username,omitempty" mapstructure:"-"`
 	Permissions  []agentdef.PermissionRule `json:"permissions,omitempty" mapstructure:"-"`
 }
 
@@ -188,7 +226,9 @@ func Load(workingDir string, debug bool) (*Config, error) {
 	// precedence order, applying JSONC and string interpolation, then feed the
 	// merged map to viper (Spec 11a).
 	merged := readConfigMaps(workingDir)
-	viper.MergeConfigMap(merged)
+	// viper lowercases every map key in place, which would corrupt model names
+	// and header names; keep the raw map pristine for the aux/provider readers.
+	viper.MergeConfigMap(deepCopyMap(merged))
 
 	setProviderDefaults()
 
@@ -202,6 +242,14 @@ func Load(workingDir string, debug bool) (*Config, error) {
 	if err := applyAuxConfig(merged); err != nil {
 		return cfg, fmt.Errorf("failed to load auxiliary config: %w", err)
 	}
+
+	// providers.<p>.settings/models are decoded from the raw map too: model
+	// names contain dots, which viper would split into nested keys (Spec 06).
+	applyProviderSettings(merged)
+
+	// Merge models declared under providers.<p>.models into the catalog so they
+	// resolve like built-ins and their limits feed token budgets (Spec 06b).
+	registerProviderModels()
 
 	applyDefaultValues()
 	applyModelSelection()
@@ -690,6 +738,75 @@ func hasCopilotCredentials() bool {
 	return false
 }
 
+// applyProviderSettings overlays the v2 providers.<p>.{settings,models} keys
+// decoded from the raw merged map onto cfg.Providers. json is used (not viper)
+// because model names may contain dots, which viper would split into nested
+// keys (Spec 06).
+func applyProviderSettings(merged map[string]any) {
+	if cfg == nil {
+		return
+	}
+	rawProviders, ok := merged["providers"]
+	if !ok {
+		return
+	}
+	b, err := json.Marshal(rawProviders)
+	if err != nil {
+		return
+	}
+	var decoded map[string]struct {
+		Settings ProviderSettings         `json:"settings"`
+		Models   map[string]ProviderModel `json:"models"`
+	}
+	if err := json.Unmarshal(b, &decoded); err != nil {
+		logging.Warn("failed to parse providers config", "error", err)
+		return
+	}
+	if cfg.Providers == nil {
+		cfg.Providers = make(map[models.ModelProvider]Provider)
+	}
+	for name, pc := range decoded {
+		key := models.ModelProvider(name)
+		existing := cfg.Providers[key]
+		existing.Settings = pc.Settings
+		existing.Models = pc.Models
+		cfg.Providers[key] = existing
+	}
+}
+
+// registerProviderModels merges models declared under providers.<p>.models into
+// the model catalog (Spec 06b). The model is registered under both the canonical
+// "<provider>.<key>" id and, when free, the bare "<key>" id. limit.context feeds
+// the context window and limit.output the default max tokens.
+func registerProviderModels() {
+	if cfg == nil {
+		return
+	}
+	for providerName, providerCfg := range cfg.Providers {
+		for key, m := range providerCfg.Models {
+			id := string(providerName) + "." + key
+			if m.ModelID == "" && key == "" {
+				continue
+			}
+			model := models.Model{
+				ID:       models.ModelID(id),
+				Name:     m.Name,
+				Provider: providerName,
+				APIModel: m.ModelID,
+			}
+			if model.APIModel == "" {
+				model.APIModel = key
+			}
+			if model.Name == "" {
+				model.Name = key
+			}
+			model.ContextWindow = m.Limit.Context
+			model.DefaultMaxTokens = m.Limit.Output
+			models.RegisterModel(model)
+		}
+	}
+}
+
 // applyModelSelection wires the v2 top-level "model" and "small_model" keys to
 // the agents they govern (Spec 11b):
 //
@@ -809,7 +926,7 @@ func validateAgent(cfg *Config, name string, agent AgentDefinition) error {
 			}
 			logging.Info("added provider from environment", "provider", provider)
 		}
-	} else if providerCfg.Disabled || providerCfg.APIKey == "" {
+	} else if providerCfg.Disabled || providerCfg.EffectiveAPIKey() == "" {
 		// Provider is disabled or has no API key
 		logging.Warn("provider is disabled or has no API key, reverting to default",
 			"agent", name,
@@ -911,7 +1028,7 @@ func Validate() error {
 
 	// Validate providers
 	for provider, providerCfg := range cfg.Providers {
-		if providerCfg.APIKey == "" && !providerCfg.Disabled {
+		if providerCfg.EffectiveAPIKey() == "" && !providerCfg.Disabled {
 			fmt.Printf("provider has no API key, marking as disabled %s", provider)
 			logging.Warn("provider has no API key, marking as disabled", "provider", provider)
 			providerCfg.Disabled = true

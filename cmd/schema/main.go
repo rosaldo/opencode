@@ -187,6 +187,59 @@ func generateSchema() map[string]any {
 					"description": "Whether the provider is disabled",
 					"default":     false,
 				},
+				"settings": map[string]any{
+					"type":        "object",
+					"description": "v2 provider connection settings",
+					"properties": map[string]any{
+						"apiKey": map[string]any{
+							"type":        "string",
+							"description": "API key for the provider",
+						},
+						"baseURL": map[string]any{
+							"type":        "string",
+							"description": "Override the provider API base URL",
+						},
+						"headers": map[string]any{
+							"type":                 "object",
+							"description":          "Extra HTTP headers sent with every request",
+							"additionalProperties": map[string]any{"type": "string"},
+						},
+						"transport": map[string]any{
+							"type":        "string",
+							"description": "Transport to use",
+							"enum":        []string{"http", "websocket"},
+						},
+					},
+				},
+				"models": map[string]any{
+					"type":        "object",
+					"description": "Declare or override models for this provider",
+					"additionalProperties": map[string]any{
+						"type": "object",
+						"properties": map[string]any{
+							"modelID": map[string]any{
+								"type":        "string",
+								"description": "Provider API model id",
+							},
+							"name": map[string]any{
+								"type":        "string",
+								"description": "Display name",
+							},
+							"limit": map[string]any{
+								"type": "object",
+								"properties": map[string]any{
+									"context": map[string]any{"type": "integer", "description": "Context window in tokens"},
+									"output":  map[string]any{"type": "integer", "description": "Default max output tokens"},
+								},
+							},
+							"options": map[string]any{
+								"type":                 "object",
+								"description":          "Provider-specific model options",
+								"additionalProperties": true,
+							},
+						},
+					},
+				},
 			},
 		},
 	}

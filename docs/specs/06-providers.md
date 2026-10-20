@@ -79,6 +79,20 @@ modelos conhecidos e seleção por topo `model`/`small_model`.
 - `internal/config`: parse de `providers.<p>.models/settings`, `model`, `small_model`.
 - `internal/llm/models`: `ResolveModelID` com modelo de config.
 
+## Status
+
+- **06a (settings/endpoints) — Verificado**: `Provider.Settings` (`apiKey`/`baseURL`/`headers`/`transport`)
+  no `Config`; opções genéricas `WithBaseURL`/`WithHeaders`/`WithTransport` no pacote `provider`,
+  aplicadas em OpenAI-compatíveis e Anthropic (settings vencem os defaults hard-coded);
+  `createAgentProvider` passa os settings. `EffectiveAPIKey()` mantém back-compat com o `apiKey` flat.
+  Testes: `internal/llm/provider/provider_settings_test.go` (override de opções + `httptest` verificando
+  baseURL e header na requisição).
+- **06b (catálogo) — Verificado**: `providers.<p>.models` decodificado do mapa bruto (json, pois viper
+  quebra nomes com ponto), `models.RegisterModel` mescla no catálogo, `ResolveModelID` aceita
+  `<provider>/<model>` também para ids `provider.model`; `limit.context`/`limit.output` alimentam
+  context window / max tokens. Testes: `internal/config/provider_test.go`, `internal/llm/models`.
+  `options`/variantes são aceitos no schema mas ainda não aplicados ao runtime.
+
 ## Riscos
 
 - Não confundir `providers` (credenciais atuais) com o v2 (models/settings): unificar com migração.

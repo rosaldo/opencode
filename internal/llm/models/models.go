@@ -2,6 +2,34 @@ package models
 
 import "maps"
 
+// RegisterModel adds or overrides a model in the catalog. It is used to merge
+// models declared in the config (providers.<p>.models) into SupportedModels
+// (Spec 06b). An existing model is updated in place, preserving fields the
+// config does not override.
+func RegisterModel(m Model) {
+	if existing, ok := SupportedModels[m.ID]; ok {
+		if m.Provider == "" {
+			m.Provider = existing.Provider
+		}
+		if m.Name == "" {
+			m.Name = existing.Name
+		}
+		if m.ContextWindow == 0 {
+			m.ContextWindow = existing.ContextWindow
+		}
+		if m.DefaultMaxTokens == 0 {
+			m.DefaultMaxTokens = existing.DefaultMaxTokens
+		}
+	}
+	if m.APIModel == "" {
+		m.APIModel = string(m.ID)
+	}
+	if m.Name == "" {
+		m.Name = string(m.ID)
+	}
+	SupportedModels[m.ID] = m
+}
+
 type (
 	ModelID       string
 	ModelProvider string

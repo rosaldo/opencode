@@ -43,6 +43,21 @@ func newOpenAIClient(opts providerClientOptions) OpenAIClient {
 		o(&openaiOpts)
 	}
 
+	// Generic v2 settings override the provider defaults (Spec 06).
+	if opts.baseURL != "" {
+		openaiOpts.baseURL = opts.baseURL
+	}
+	if len(opts.headers) > 0 {
+		merged := map[string]string{}
+		for k, v := range openaiOpts.extraHeaders {
+			merged[k] = v
+		}
+		for k, v := range opts.headers {
+			merged[k] = v
+		}
+		openaiOpts.extraHeaders = merged
+	}
+
 	openaiClientOptions := []option.RequestOption{}
 	if opts.apiKey != "" {
 		openaiClientOptions = append(openaiClientOptions, option.WithAPIKey(opts.apiKey))

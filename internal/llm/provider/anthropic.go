@@ -45,6 +45,13 @@ func newAnthropicClient(opts providerClientOptions) AnthropicClient {
 	if opts.apiKey != "" {
 		anthropicClientOptions = append(anthropicClientOptions, option.WithAPIKey(opts.apiKey))
 	}
+	// Generic v2 settings (Spec 06).
+	if opts.baseURL != "" {
+		anthropicClientOptions = append(anthropicClientOptions, option.WithBaseURL(opts.baseURL))
+	}
+	for k, v := range opts.headers {
+		anthropicClientOptions = append(anthropicClientOptions, option.WithHeader(k, v))
+	}
 	if anthropicOpts.useBedrock {
 		anthropicClientOptions = append(anthropicClientOptions, bedrock.WithLoadDefaultConfig(context.Background()))
 	}

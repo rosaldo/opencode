@@ -154,6 +154,35 @@ func readConfigMaps(workingDir string) map[string]any {
 	return merged
 }
 
+// deepCopyMap returns a recursive copy of a decoded JSON map. viper mutates
+// keys in place when merging (lowercasing them), so callers hand it a copy to
+// keep the original map's key casing intact for the aux/provider readers.
+func deepCopyMap(m map[string]any) map[string]any {
+	if m == nil {
+		return nil
+	}
+	out := make(map[string]any, len(m))
+	for k, v := range m {
+		out[k] = deepCopyValue(v)
+	}
+	return out
+}
+
+func deepCopyValue(v any) any {
+	switch t := v.(type) {
+	case map[string]any:
+		return deepCopyMap(t)
+	case []any:
+		s := make([]any, len(t))
+		for i, e := range t {
+			s[i] = deepCopyValue(e)
+		}
+		return s
+	default:
+		return v
+	}
+}
+
 // interpolateMap applies interpolate to every string in a decoded JSON value
 // (maps, slices and scalars), returning a value of the same shape.
 func interpolateMap(v any, baseDir string) any {

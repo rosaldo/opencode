@@ -764,10 +764,18 @@ func createAgentProvider(name string) (provider.Provider, error) {
 	}
 
 	opts := []provider.ProviderClientOption{
-		provider.WithAPIKey(providerCfg.APIKey),
+		provider.WithAPIKey(providerCfg.EffectiveAPIKey()),
 		provider.WithModel(model),
 		provider.WithSystemMessage(prompt.GetAgentPrompt(name, model.Provider)),
 		provider.WithMaxTokens(maxTokens),
+	}
+	// v2 provider settings: baseURL/headers/transport override the defaults (Spec 06).
+	if s := providerCfg.Settings; s.BaseURL != "" || len(s.Headers) > 0 || s.Transport != "" {
+		opts = append(opts,
+			provider.WithBaseURL(s.BaseURL),
+			provider.WithHeaders(s.Headers),
+			provider.WithTransport(s.Transport),
+		)
 	}
 	if model.Provider == models.ProviderOpenAI || model.Provider == models.ProviderLocal && model.CanReason {
 		opts = append(

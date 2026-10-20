@@ -50,7 +50,7 @@ geração v2** (`https://opencode.ai/config.json`), não a 1.19.3.
 
 | # | Spec | Escopo | Status | Depende de |
 |---|------|--------|--------|-----------|
-| 6 | [06-providers.md](06-providers.md) | Providers v2: `providers.<p>.models/settings` (baseURL/headers), `model`/`small_model`, catálogo | Planejado | 11 |
+| 6 | [06-providers.md](06-providers.md) | Providers v2: `providers.<p>.models/settings` (baseURL/headers), `model`/`small_model`, catálogo | Verificado | 11 |
 | 7 | [07-permissions.md](07-permissions.md) | `permissions` (array por recurso) + `policies`, `external_directory`, gating ampliado | Planejado | 11 |
 | 8 | [08-mcp.md](08-mcp.md) | `mcp.servers` local/remote, HTTP/streamable, resources/prompts, OAuth, ciclo de vida | Planejado | 11 |
 | 9 | [09-tui.md](09-tui.md) | TUI v2: keybinds (`tui.json`/`cli.json`), mouse/scroll, sessões, paste | Planejado | 11, 07 |

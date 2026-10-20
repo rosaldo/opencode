@@ -64,6 +64,13 @@ type providerClientOptions struct {
 	maxTokens     int64
 	systemMessage string
 
+	// Generic v2 connection settings (Spec 06). When set they override the
+	// provider's hard-coded defaults (baseURL) and are merged into the request
+	// headers.
+	baseURL   string
+	headers   map[string]string
+	transport string
+
 	anthropicOptions []AnthropicOption
 	openaiOptions    []OpenAIOption
 	geminiOptions    []GeminiOption
@@ -213,6 +220,29 @@ func WithMaxTokens(maxTokens int64) ProviderClientOption {
 func WithSystemMessage(systemMessage string) ProviderClientOption {
 	return func(options *providerClientOptions) {
 		options.systemMessage = systemMessage
+	}
+}
+
+// WithBaseURL sets a generic base URL that overrides the provider default
+// (Spec 06). Ignored by providers that do not accept a configurable endpoint.
+func WithBaseURL(baseURL string) ProviderClientOption {
+	return func(options *providerClientOptions) {
+		options.baseURL = baseURL
+	}
+}
+
+// WithHeaders sets generic extra headers merged into every request (Spec 06).
+func WithHeaders(headers map[string]string) ProviderClientOption {
+	return func(options *providerClientOptions) {
+		options.headers = headers
+	}
+}
+
+// WithTransport selects the transport, e.g. "websocket" (Spec 06). Currently
+// only recorded; unsupported transports fall back to the SDK default.
+func WithTransport(transport string) ProviderClientOption {
+	return func(options *providerClientOptions) {
+		options.transport = transport
 	}
 }
 

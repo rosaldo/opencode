@@ -954,6 +954,41 @@
             "description": "Whether the provider is disabled",
             "type": "boolean"
           },
+          "models": {
+            "additionalProperties": {
+              "properties": {
+                "limit": {
+                  "properties": {
+                    "context": {
+                      "description": "Context window in tokens",
+                      "type": "integer"
+                    },
+                    "output": {
+                      "description": "Default max output tokens",
+                      "type": "integer"
+                    }
+                  },
+                  "type": "object"
+                },
+                "modelID": {
+                  "description": "Provider API model id",
+                  "type": "string"
+                },
+                "name": {
+                  "description": "Display name",
+                  "type": "string"
+                },
+                "options": {
+                  "additionalProperties": true,
+                  "description": "Provider-specific model options",
+                  "type": "object"
+                }
+              },
+              "type": "object"
+            },
+            "description": "Declare or override models for this provider",
+            "type": "object"
+          },
           "provider": {
             "description": "Provider type",
             "enum": [
@@ -967,6 +1002,35 @@
               "vertexai"
             ],
             "type": "string"
+          },
+          "settings": {
+            "description": "v2 provider connection settings",
+            "properties": {
+              "apiKey": {
+                "description": "API key for the provider",
+                "type": "string"
+              },
+              "baseURL": {
+                "description": "Override the provider API base URL",
+                "type": "string"
+              },
+              "headers": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "Extra HTTP headers sent with every request",
+                "type": "object"
+              },
+              "transport": {
+                "description": "Transport to use",
+                "enum": [
+                  "http",
+                  "websocket"
+                ],
+                "type": "string"
+              }
+            },
+            "type": "object"
           }
         },
         "type": "object"
