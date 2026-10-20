@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/opencode-ai/opencode/internal/agentdef"
 	"github.com/opencode-ai/opencode/internal/config"
 	"github.com/opencode-ai/opencode/internal/llm/models"
 	"github.com/opencode-ai/opencode/internal/lsp"
@@ -29,6 +30,9 @@ type statusCmp struct {
 	messageTTL time.Duration
 	lspClients map[string]*lsp.Client
 	session    session.Session
+	// activeAgent returns the name of the agent currently selected in the
+	// AgentManager; injected to avoid a dependency on internal/app.
+	activeAgent func() string
 }
 
 // clearMessageCmd is a command that clears status messages after a timeout
@@ -118,7 +122,7 @@ func formatTokensAndCost(tokens, contextWindow int64, cost float64) string {
 
 func (m statusCmp) View() string {
 	t := theme.CurrentTheme()
-	modelID := config.Get().Agents[config.AgentCoder].Model
+	modelID := m.activeAgentModelID()
 	model := models.SupportedModels[modelID]
 
 	// Initialize the help widget
@@ -266,28 +270,45 @@ func (m statusCmp) availableFooterMsgWidth(diagnostics, tokenInfo string) int {
 	return max(0, m.width-lipgloss.Width(helpWidget)-lipgloss.Width(m.model())-lipgloss.Width(diagnostics)-tokensWidth)
 }
 
+func (m statusCmp) activeAgentName() string {
+	if m.activeAgent == nil {
+		return agentdef.DefaultName
+	}
+	if name := m.activeAgent(); name != "" {
+		return name
+	}
+	return agentdef.DefaultName
+}
+
+// activeAgentModelID resolves the model of the active agent, falling back to
+// the coder model so the status bar never renders empty.
+func (m statusCmp) activeAgentModelID() models.ModelID {
+	return config.AgentModelID(config.AgentName(m.activeAgentName()))
+}
+
 func (m statusCmp) model() string {
 	t := theme.CurrentTheme()
 
-	cfg := config.Get()
-
-	coder, ok := cfg.Agents[config.AgentCoder]
-	if !ok {
-		return "Unknown"
+	name := m.activeAgentName()
+	modelID := m.activeAgentModelID()
+	model := models.SupportedModels[modelID]
+	label := model.Name
+	if label == "" {
+		label = string(modelID)
 	}
-	model := models.SupportedModels[coder.Model]
 
 	return styles.Padded().
 		Background(t.Secondary()).
 		Foreground(t.Background()).
-		Render(model.Name)
+		Render(name + " · " + label)
 }
 
-func NewStatusCmp(lspClients map[string]*lsp.Client) StatusCmp {
+func NewStatusCmp(lspClients map[string]*lsp.Client, activeAgent func() string) StatusCmp {
 	helpWidget = getHelpWidget()
 
 	return &statusCmp{
-		messageTTL: 10 * time.Second,
-		lspClients: lspClients,
+		messageTTL:  10 * time.Second,
+		lspClients:  lspClients,
+		activeAgent: activeAgent,
 	}
 }

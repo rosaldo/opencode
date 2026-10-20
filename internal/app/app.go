@@ -28,7 +28,7 @@ type App struct {
 	History     history.Service
 	Permissions permission.Service
 
-	CoderAgent agent.Service
+	Agents *AgentManager
 
 	LSPClients map[string]*lsp.Client
 
@@ -59,23 +59,13 @@ func New(ctx context.Context, conn *sql.DB) (*App, error) {
 	// Initialize LSP clients in the background
 	go app.initLSPClients(ctx)
 
-	var err error
-	app.CoderAgent, err = agent.NewAgent(
-		config.AgentCoder,
-		app.Sessions,
-		app.Messages,
-		agent.CoderAgentTools(
-			app.Permissions,
-			app.Sessions,
-			app.Messages,
-			app.History,
-			app.LSPClients,
-		),
-	)
-	if err != nil {
-		logging.Error("Failed to create coder agent", err)
-		return nil, err
-	}
+	app.Agents = NewAgentManager(ctx, agent.AgentToolDeps{
+		Permissions: app.Permissions,
+		Sessions:    app.Sessions,
+		Messages:    app.Messages,
+		History:     app.History,
+		LspClients:  app.LSPClients,
+	})
 
 	return app, nil
 }
@@ -128,7 +118,7 @@ func (a *App) RunNonInteractive(ctx context.Context, prompt string, outputFormat
 	// Automatically approve all permission requests for this non-interactive session
 	a.Permissions.AutoApproveSession(sess.ID)
 
-	done, err := a.CoderAgent.Run(ctx, sess.ID, prompt)
+	done, err := a.Agents.Run(ctx, sess.ID, prompt)
 	if err != nil {
 		return fmt.Errorf("failed to start agent processing stream: %w", err)
 	}
@@ -169,6 +159,10 @@ func (app *App) Shutdown() {
 	}
 	app.cancelFuncsMutex.Unlock()
 	app.watcherWG.Wait()
+
+	if app.Agents != nil {
+		app.Agents.Shutdown()
+	}
 
 	// Perform additional cleanup for LSP clients
 	app.clientsMutex.RLock()

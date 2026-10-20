@@ -29,6 +29,7 @@ type keyMap struct {
 	Quit          key.Binding
 	Help          key.Binding
 	SwitchSession key.Binding
+	SwitchAgent   key.Binding
 	Commands      key.Binding
 	Filepicker    key.Binding
 	Models        key.Binding
@@ -59,6 +60,11 @@ var keys = keyMap{
 	SwitchSession: key.NewBinding(
 		key.WithKeys("ctrl+s"),
 		key.WithHelp("ctrl+s", "switch session"),
+	),
+
+	SwitchAgent: key.NewBinding(
+		key.WithKeys("tab", "ctrl+a"),
+		key.WithHelp("tab", "switch agent"),
 	),
 
 	Commands: key.NewBinding(
@@ -123,6 +129,9 @@ type appModel struct {
 
 	showModelDialog bool
 	modelDialog     dialog.ModelDialog
+
+	showAgentDialog bool
+	agentDialog     dialog.AgentDialog
 
 	showInitDialog bool
 	initDialog     dialog.InitDialogCmp
@@ -316,7 +325,7 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Start the summarization process
 		return a, func() tea.Msg {
 			ctx := context.Background()
-			a.app.CoderAgent.Summarize(ctx, a.selectedSession.ID)
+			a.app.Agents.Summarize(ctx, a.selectedSession.ID)
 			return nil
 		}
 
@@ -333,7 +342,7 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.isCompacting = false
 			return a, util.ReportInfo("Session summarization complete")
 		} else if payload.Done && payload.Type == agent.AgentEventTypeResponse && a.selectedSession.ID != "" {
-			model := a.app.CoderAgent.Model()
+			model := a.app.Agents.Model()
 			contextWindow := model.ContextWindow
 			tokens := a.selectedSession.CompletionTokens + a.selectedSession.PromptTokens
 			if (tokens >= int64(float64(contextWindow)*0.95)) && config.Get().AutoCompact {
@@ -359,12 +368,23 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case dialog.ModelSelectedMsg:
 		a.showModelDialog = false
 
-		model, err := a.app.CoderAgent.Update(config.AgentCoder, msg.Model.ID)
+		model, err := a.app.Agents.Update("", msg.Model.ID)
 		if err != nil {
 			return a, util.ReportError(err)
 		}
 
-		return a, util.ReportInfo(fmt.Sprintf("Model changed to %s", model.Name))
+		return a, util.ReportInfo(fmt.Sprintf("Model changed to %s for agent %s", model.Name, a.app.Agents.Active()))
+
+	case dialog.AgentSelectedMsg:
+		a.showAgentDialog = false
+		if err := a.app.Agents.Switch(msg.Name); err != nil {
+			return a, util.ReportError(err)
+		}
+		return a, util.ReportInfo(fmt.Sprintf("Agent switched to %s", msg.Name))
+
+	case dialog.CloseAgentsDialogMsg:
+		a.showAgentDialog = false
+		return a, nil
 
 	case dialog.ShowInitDialogMsg:
 		a.showInitDialog = msg.Show
@@ -470,6 +490,9 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if a.showModelDialog {
 				a.showModelDialog = false
 			}
+			if a.showAgentDialog {
+				a.showAgentDialog = false
+			}
 			if a.showMultiArgumentsDialog {
 				a.showMultiArgumentsDialog = false
 			}
@@ -507,7 +530,18 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if a.currentPage == page.ChatPage && !a.showQuit && !a.showPermissions && !a.showSessionDialog && !a.showCommandDialog {
 				a.showModelDialog = true
+				// Re-init so the dialog reflects the active agent's model
+				return a, a.modelDialog.Init()
+			}
+			return a, nil
+		case key.Matches(msg, keys.SwitchAgent):
+			if a.showAgentDialog {
+				a.showAgentDialog = false
 				return a, nil
+			}
+			if a.currentPage == page.ChatPage && !a.showQuit && !a.showPermissions && !a.showSessionDialog && !a.showCommandDialog && !a.showModelDialog && !a.showThemeDialog && !a.showFilepicker {
+				a.showAgentDialog = true
+				return a, a.agentDialog.Init()
 			}
 			return a, nil
 		case key.Matches(msg, keys.SwitchTheme):
@@ -558,7 +592,7 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.showHelp = !a.showHelp
 			return a, nil
 		case key.Matches(msg, helpEsc):
-			if a.app.CoderAgent.IsBusy() {
+			if a.app.Agents.IsBusy() {
 				if a.showQuit {
 					return a, nil
 				}
@@ -636,6 +670,16 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	if a.showAgentDialog {
+		d, agentCmd := a.agentDialog.Update(msg)
+		a.agentDialog = d.(dialog.AgentDialog)
+		cmds = append(cmds, agentCmd)
+		// Only block key messages send all other messages down
+		if _, ok := msg.(tea.KeyMsg); ok {
+			return a, tea.Batch(cmds...)
+		}
+	}
+
 	if a.showInitDialog {
 		d, initCmd := a.initDialog.Update(msg)
 		a.initDialog = d.(dialog.InitDialogCmp)
@@ -678,7 +722,7 @@ func (a *appModel) findCommand(id string) (dialog.Command, bool) {
 }
 
 func (a *appModel) moveToPage(pageID page.PageID) tea.Cmd {
-	if a.app.CoderAgent.IsBusy() {
+	if a.app.Agents.IsBusy() {
 		// For now we don't move to any page if the agent is busy
 		return util.ReportWarn("Agent is busy, please wait...")
 	}
@@ -775,7 +819,7 @@ func (a appModel) View() string {
 		if a.currentPage == page.LogsPage {
 			bindings = append(bindings, logsKeyReturnKey)
 		}
-		if !a.app.CoderAgent.IsBusy() {
+		if !a.app.Agents.IsBusy() {
 			bindings = append(bindings, helpEsc)
 		}
 		a.help.SetBindings(bindings)
@@ -826,6 +870,21 @@ func (a appModel) View() string {
 
 	if a.showModelDialog {
 		overlay := a.modelDialog.View()
+		row := lipgloss.Height(appView) / 2
+		row -= lipgloss.Height(overlay) / 2
+		col := lipgloss.Width(appView) / 2
+		col -= lipgloss.Width(overlay) / 2
+		appView = layout.PlaceOverlay(
+			col,
+			row,
+			overlay,
+			appView,
+			true,
+		)
+	}
+
+	if a.showAgentDialog {
+		overlay := a.agentDialog.View()
 		row := lipgloss.Height(appView) / 2
 		row -= lipgloss.Height(overlay) / 2
 		col := lipgloss.Width(appView) / 2
@@ -903,12 +962,13 @@ func New(app *app.App) tea.Model {
 	model := &appModel{
 		currentPage:   startPage,
 		loadedPages:   make(map[page.PageID]bool),
-		status:        core.NewStatusCmp(app.LSPClients),
+		status:        core.NewStatusCmp(app.LSPClients, app.Agents.Active),
 		help:          dialog.NewHelpCmp(),
 		quit:          dialog.NewQuitCmp(),
 		sessionDialog: dialog.NewSessionDialogCmp(),
 		commandDialog: dialog.NewCommandDialogCmp(),
-		modelDialog:   dialog.NewModelDialogCmp(),
+		modelDialog:   dialog.NewModelDialogCmp(app.Agents.Active),
+		agentDialog:   dialog.NewAgentDialogCmp(app.Agents.Active),
 		permissions:   dialog.NewPermissionDialogCmp(),
 		initDialog:    dialog.NewInitDialogCmp(),
 		themeDialog:   dialog.NewThemeDialogCmp(),

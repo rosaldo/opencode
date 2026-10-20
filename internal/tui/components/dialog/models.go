@@ -46,6 +46,10 @@ type modelDialogCmp struct {
 	scrollOffset    int
 	hScrollOffset   int
 	hScrollPossible bool
+
+	// activeAgent returns the name of the agent currently selected in the
+	// AgentManager; the dialog shows and changes that agent's model.
+	activeAgent func() string
 }
 
 type modelKeyMap struct {
@@ -270,14 +274,24 @@ func (m *modelDialogCmp) BindingKeys() []key.Binding {
 
 func (m *modelDialogCmp) setupModels() {
 	cfg := config.Get()
-	modelInfo := GetSelectedModel(cfg)
+	selectedModelID := m.selectedModelID()
+	model := models.SupportedModels[selectedModelID]
 	m.availableProviders = getEnabledProviders(cfg)
 	m.hScrollPossible = len(m.availableProviders) > 1
 
-	m.provider = modelInfo.Provider
+	m.provider = model.Provider
 	m.hScrollOffset = findProviderIndex(m.availableProviders, m.provider)
 
 	m.setupModelsForProvider(m.provider)
+}
+
+// selectedModelID resolves the model of the active agent (or the coder when
+// no getter is injected).
+func (m *modelDialogCmp) selectedModelID() models.ModelID {
+	if m.activeAgent != nil {
+		return config.AgentModelID(config.AgentName(m.activeAgent()))
+	}
+	return GetSelectedModel(config.Get()).ID
 }
 
 func GetSelectedModel(cfg *config.Config) models.Model {
@@ -323,9 +337,7 @@ func findProviderIndex(providers []models.ModelProvider, provider models.ModelPr
 }
 
 func (m *modelDialogCmp) setupModelsForProvider(provider models.ModelProvider) {
-	cfg := config.Get()
-	agentCfg := cfg.Agents[config.AgentCoder]
-	selectedModelId := agentCfg.Model
+	selectedModelID := m.selectedModelID()
 
 	m.provider = provider
 	m.models = getModelsForProvider(provider)
@@ -333,9 +345,9 @@ func (m *modelDialogCmp) setupModelsForProvider(provider models.ModelProvider) {
 	m.scrollOffset = 0
 
 	// Try to select the current model if it belongs to this provider
-	if provider == models.SupportedModels[selectedModelId].Provider {
+	if provider == models.SupportedModels[selectedModelID].Provider {
 		for i, model := range m.models {
-			if model.ID == selectedModelId {
+			if model.ID == selectedModelID {
 				m.selectedIdx = i
 				// Adjust scroll position to keep selected model visible
 				if m.selectedIdx >= numVisibleModels {
@@ -368,6 +380,6 @@ func getModelsForProvider(provider models.ModelProvider) []models.Model {
 	return providerModels
 }
 
-func NewModelDialogCmp() ModelDialog {
-	return &modelDialogCmp{}
+func NewModelDialogCmp(activeAgent func() string) ModelDialog {
+	return &modelDialogCmp{activeAgent: activeAgent}
 }
