@@ -14,11 +14,11 @@ import (
 // HookResult is the verdict returned by a hook invocation. A nil Allow means the
 // hook abstained (does not decide). Deny short-circuits to a denial.
 type HookResult struct {
-	Allow     *bool          `json:"allow,omitempty"`
-	Message   string         `json:"message,omitempty"`
-	Mutate    map[string]any `json:"mutate,omitempty"`
-	Model     string         `json:"model,omitempty"`
-	Params    map[string]any `json:"params,omitempty"`
+	Allow   *bool          `json:"allow,omitempty"`
+	Message string         `json:"message,omitempty"`
+	Mutate  map[string]any `json:"mutate,omitempty"`
+	Model   string         `json:"model,omitempty"`
+	Params  map[string]any `json:"params,omitempty"`
 }
 
 // rpcRequest / rpcResponse are the line-delimited JSON messages of the protocol.
@@ -154,6 +154,28 @@ func (c *Client) RunHook(ctx context.Context, hook Hook, payload map[string]any)
 	var res HookResult
 	if err := json.Unmarshal(raw, &res); err != nil {
 		return HookResult{}, err
+	}
+	return res, nil
+}
+
+// ToolResult is the result of invoking a plugin-provided tool.
+type ToolResult struct {
+	Content string `json:"content"`
+	IsError bool   `json:"isError,omitempty"`
+}
+
+// CallTool invokes a tool declared by the plugin (Spec 10c).
+func (c *Client) CallTool(ctx context.Context, name string, args map[string]any) (ToolResult, error) {
+	raw, err := c.Call(ctx, "tool/call", map[string]any{"name": name, "arguments": args})
+	if err != nil {
+		return ToolResult{}, err
+	}
+	if len(raw) == 0 {
+		return ToolResult{}, nil
+	}
+	var res ToolResult
+	if err := json.Unmarshal(raw, &res); err != nil {
+		return ToolResult{}, err
 	}
 	return res, nil
 }

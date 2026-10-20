@@ -96,9 +96,22 @@ Recomendação: (A) como base, com um manifesto (`plugin.json`) declarando hooks
   é notificado. Boot/close em `cmd/root.go`/`internal/app` (`initPlugins`, `Shutdown`). Testes:
   `internal/plugin/client_test.go` (executável fake via `TestHelperProcess`; deny de `bash`,
   mutate, chat.params, isolamento).
-- **10c custom tools + UI** — Pendente. Tools declaradas por plugins (registro no `FullToolSet`
-  com gating/permissão) e diálogo de plugins na TUI ficam para uma fase dedicada. O manifesto já
-  declara `tools`; falta o wiring de registro/execução e a UI.
+- **10c custom tools + UI** — Verificado. Tools declaradas por plugins são registradas no conjunto
+  de tools do agente e executadas com gating de permissão; há um diálogo de plugins na TUI.
+  - Protocolo: `Client.CallTool` (método `tool/call`, `{name,arguments}` → `{content,isError}`).
+  - `Manager.Tools()` (metadados: `ToolMeta` com `FullName()` = `plugin_<plugin>_<tool>`),
+    `Manager.CallTool(ctx, fullName, args)` (timeout de 5s) e `Manager.Summaries()` (nome, hooks,
+    tools — usado pela UI).
+  - `internal/llm/agent/plugin-tools.go`: `pluginTool` implementa `tools.BaseTool` (análoga a
+    `mcpTool`), pedindo permissão via `permission.Service` antes de executar; `GetPluginTools`
+    recebe o serviço de permissão do agente. Injetada em `FullToolSet`
+    (`tools_filter.go`) após as tools de MCP.
+  - TUI: `dialog.PluginsDialog` (novo `internal/tui/components/dialog/plugins.go`) lista plugins
+    com hooks/tools; aberto pelo comando `/plugins` (ou na command dialog) via
+    `ShowPluginsDialogMsg`, fechado com `esc`/`q` (`ClosePluginsDialogMsg`).
+  - Testes: `internal/llm/agent/plugin-tools_test.go` (injeção, nome/params, negação por política),
+    `internal/plugin/client_test.go` (`Tools`/`CallTool`/`Summaries` com executável fake),
+    `internal/tui/components/dialog/plugins_test.go` (render, estado vazio, fechar).
 
 ## Riscos
 

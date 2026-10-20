@@ -13,6 +13,7 @@ import (
 	"github.com/opencode-ai/opencode/internal/llm/agent"
 	"github.com/opencode-ai/opencode/internal/logging"
 	"github.com/opencode-ai/opencode/internal/permission"
+	"github.com/opencode-ai/opencode/internal/plugin"
 	"github.com/opencode-ai/opencode/internal/pubsub"
 	"github.com/opencode-ai/opencode/internal/session"
 	"github.com/opencode-ai/opencode/internal/tui/components/chat"
@@ -199,8 +200,10 @@ type appModel struct {
 	showFilepicker bool
 	filepicker     dialog.FilepickerCmp
 
-	showThemeDialog bool
-	themeDialog     dialog.ThemeDialog
+	showThemeDialog   bool
+	themeDialog       dialog.ThemeDialog
+	showPluginsDialog bool
+	pluginsDialog     dialog.PluginsDialog
 
 	showMultiArgumentsDialog bool
 	multiArgumentsDialog     dialog.MultiArgumentsDialogCmp
@@ -231,6 +234,8 @@ func (a appModel) Init() tea.Cmd {
 	cmd = a.filepicker.Init()
 	cmds = append(cmds, cmd)
 	cmd = a.themeDialog.Init()
+	cmds = append(cmds, cmd)
+	cmd = a.pluginsDialog.Init()
 	cmds = append(cmds, cmd)
 
 	// Check if we should show the init dialog
@@ -453,6 +458,15 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case dialog.CloseThemeDialogMsg:
 		a.showThemeDialog = false
+		return a, nil
+
+	case dialog.ShowPluginsDialogMsg:
+		a.pluginsDialog.SetPlugins(msg.Plugins)
+		a.showPluginsDialog = true
+		return a, a.pluginsDialog.Init()
+
+	case dialog.ClosePluginsDialogMsg:
+		a.showPluginsDialog = false
 		return a, nil
 
 	case dialog.ThemeChangedMsg:
@@ -824,6 +838,15 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	if a.showPluginsDialog {
+		d, pluginsCmd := a.pluginsDialog.Update(msg)
+		a.pluginsDialog = d.(dialog.PluginsDialog)
+		cmds = append(cmds, pluginsCmd)
+		if _, ok := msg.(tea.KeyMsg); ok {
+			return a, tea.Batch(cmds...)
+		}
+	}
+
 	s, _ := a.status.Update(msg)
 	a.status = s.(core.StatusCmp)
 	a.pages[a.currentPage], cmd = a.pages[a.currentPage].Update(msg)
@@ -834,6 +857,27 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // RegisterCommand adds a command to the command dialog
 func (a *appModel) RegisterCommand(cmd dialog.Command) {
 	a.commands = append(a.commands, cmd)
+}
+
+// pluginInfos builds the view model for the plugins dialog from the loaded
+// plugin manager.
+func pluginInfos() []dialog.PluginInfo {
+	mgr := plugin.GetManager()
+	if mgr == nil {
+		return nil
+	}
+	var out []dialog.PluginInfo
+	for _, p := range mgr.Summaries() {
+		info := dialog.PluginInfo{Name: p.Name}
+		for _, h := range p.Hooks {
+			info.Hooks = append(info.Hooks, string(h))
+		}
+		for _, t := range p.Tools {
+			info.Tools = append(info.Tools, t)
+		}
+		out = append(out, info)
+	}
+	return out
 }
 
 func (a *appModel) findCommand(id string) (dialog.Command, bool) {
@@ -1063,6 +1107,15 @@ func (a appModel) View() string {
 		)
 	}
 
+	if a.showPluginsDialog {
+		overlay := a.pluginsDialog.View()
+		row := lipgloss.Height(appView) / 2
+		row -= lipgloss.Height(overlay) / 2
+		col := lipgloss.Width(appView) / 2
+		col -= lipgloss.Width(overlay) / 2
+		appView = layout.PlaceOverlay(col, row, overlay, appView, true)
+	}
+
 	if a.showMultiArgumentsDialog {
 		overlay := a.multiArgumentsDialog.View()
 		row := lipgloss.Height(appView) / 2
@@ -1097,6 +1150,7 @@ func New(app *app.App) tea.Model {
 		permissions:   dialog.NewPermissionDialogCmp(),
 		initDialog:    dialog.NewInitDialogCmp(),
 		themeDialog:   dialog.NewThemeDialogCmp(),
+		pluginsDialog: dialog.NewPluginsDialog(),
 		app:           app,
 		commands:      []dialog.Command{},
 		pages: map[page.PageID]tea.Model{
@@ -1136,6 +1190,15 @@ If there are Cursor rules (in .cursor/rules/ or .cursorrules) or Copilot rules (
 			}
 		},
 	})
+	model.RegisterCommand(dialog.Command{
+		ID:          "plugins",
+		Title:       "Plugins",
+		Description: "List the loaded plugins, their hooks and tools",
+		Handler: func(cmd dialog.Command) tea.Cmd {
+			return util.CmdHandler(dialog.ShowPluginsDialogMsg{Plugins: pluginInfos()})
+		},
+	})
+
 	// Load custom commands
 	customCommands, err := dialog.LoadCustomCommands()
 	if err != nil {

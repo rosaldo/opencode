@@ -48,6 +48,7 @@ func FullToolSet(ctx context.Context, caller *agentdef.Definition, deps AgentToo
 		local = append(local, tool)
 	}
 	out := append(local, GetMcpTools(ctx, deps.Permissions)...)
+	out = append(out, GetPluginTools(deps.Permissions)...)
 	if len(deps.LspClients) > 0 {
 		out = append(out, tools.NewDiagnosticsTool(deps.LspClients))
 	}

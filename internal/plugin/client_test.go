@@ -31,6 +31,10 @@ func TestHelperProcess(t *testing.T) {
 		}
 		var result any
 		switch req.Method {
+		case "tool/call":
+			name, _ := req.Params["name"].(string)
+			args, _ := req.Params["arguments"].(map[string]any)
+			result = map[string]any{"content": fmt.Sprintf("tool %s got %v", name, args["x"])}
 		case "hook":
 			hook, _ := req.Params["hook"].(string)
 			switch hook {
@@ -64,6 +68,9 @@ func helperClient(t *testing.T, hooks ...Hook) *Client {
 			Name:    "helper",
 			Command: []string{os.Args[0], "-test.run=TestHelperProcess", "--"},
 			Hooks:   hooks,
+			Tools: []ToolSpec{
+				{Name: "echo", Description: "echoes x", Parameters: map[string]any{"x": "string"}},
+			},
 		},
 	}
 	c, err := Start(p)
@@ -72,6 +79,33 @@ func helperClient(t *testing.T, hooks ...Hook) *Client {
 	}
 	t.Cleanup(func() { c.Close() })
 	return c
+}
+
+func TestManagerToolsAndCall(t *testing.T) {
+	c := helperClient(t)
+	m := &Manager{clients: []*Client{c}}
+
+	tools := m.Tools()
+	if len(tools) != 1 || tools[0].FullName() != "plugin_helper_echo" {
+		t.Fatalf("tools = %+v", tools)
+	}
+
+	res, err := m.CallTool(context.Background(), "plugin_helper_echo", map[string]any{"x": 7})
+	if err != nil {
+		t.Fatalf("call: %v", err)
+	}
+	if res.Content != "tool echo got 7" {
+		t.Fatalf("content = %q", res.Content)
+	}
+
+	if _, err := m.CallTool(context.Background(), "plugin_helper_missing", nil); err == nil {
+		t.Fatal("expected error for unknown tool")
+	}
+
+	sums := m.Summaries()
+	if len(sums) != 1 || sums[0].Name != "helper" || len(sums[0].Tools) != 1 || sums[0].Tools[0] != "echo" {
+		t.Fatalf("summaries = %+v", sums)
+	}
 }
 
 func TestClientRunHookDeny(t *testing.T) {

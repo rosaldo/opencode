@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/opencode-ai/opencode/internal/config"
@@ -55,6 +56,68 @@ func (m *Manager) Close() {
 		}
 	}
 	m.clients = nil
+}
+
+// ToolMeta describes a tool a plugin provides.
+type ToolMeta struct {
+	Plugin      string
+	Name        string
+	Description string
+	Parameters  map[string]any
+}
+
+// FullName is the qualified tool name exposed to the model.
+func (t ToolMeta) FullName() string { return "plugin_" + t.Plugin + "_" + t.Name }
+
+// PluginSummary describes a loaded plugin for UI display.
+type PluginSummary struct {
+	Name  string
+	Hooks []Hook
+	Tools []string
+}
+
+// Summaries lists the loaded plugins with their hooks and tools (Spec 10c).
+func (m *Manager) Summaries() []PluginSummary {
+	out := make([]PluginSummary, 0, len(m.clients))
+	for _, c := range m.clients {
+		s := PluginSummary{Name: c.Name()}
+		s.Hooks = append(s.Hooks, c.plugin.Manifest.Hooks...)
+		for _, t := range c.plugin.Manifest.Tools {
+			s.Tools = append(s.Tools, t.Name)
+		}
+		out = append(out, s)
+	}
+	return out
+}
+
+// Tools lists the tools declared by every loaded plugin.
+func (m *Manager) Tools() []ToolMeta {
+	var out []ToolMeta
+	for _, c := range m.clients {
+		for _, t := range c.plugin.Manifest.Tools {
+			out = append(out, ToolMeta{
+				Plugin:      c.Name(),
+				Name:        t.Name,
+				Description: t.Description,
+				Parameters:  t.Parameters,
+			})
+		}
+	}
+	return out
+}
+
+// CallTool invokes a plugin tool by its qualified name (Spec 10c).
+func (m *Manager) CallTool(ctx context.Context, fullName string, args map[string]any) (ToolResult, error) {
+	for _, c := range m.clients {
+		for _, t := range c.plugin.Manifest.Tools {
+			if (ToolMeta{Plugin: c.Name(), Name: t.Name}).FullName() == fullName {
+				cctx, cancel := context.WithTimeout(ctx, hookTimeout)
+				defer cancel()
+				return c.CallTool(cctx, t.Name, args)
+			}
+		}
+	}
+	return ToolResult{}, fmt.Errorf("plugin tool %q not found", fullName)
 }
 
 // hasHook reports whether the client subscribed to hook.
