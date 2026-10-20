@@ -94,6 +94,26 @@ subdivididas em 11b/11c.
 6. Teste de drift do schema passa (schema == gerador).
 7. Chaves de 06/07/08/10 são parseadas e validadas (mesmo sem comportamento aqui).
 
+## Status
+
+### 11a — formato, localização e interpolação — Verificado
+
+- `internal/config/configfiles.go`: `configFiles(workingDir)` descobre os arquivos em ordem de
+  precedência (global `~/.config/opencode/opencode.json(c)` < `opencode.json(c)` de cada ancestral
+  da raiz ao wd < `.opencode/opencode.json(c)` no mesmo nível < legado `.opencode.json` no nível do
+  wd < `/etc/opencode/opencode.json(c)`); o legado é lido nos mesmos slots (global e projeto).
+- `internal/config/jsonc.go`: `stripJsonc` remove comentários e vírgulas finais em duas passadas,
+  respeitando strings/escapes, sem dependência nova.
+- `internal/config/interpolate.go`: `interpolate(s, baseDir)` expande `{env:VAR}` e `{file:path}`
+  (absoluto, `~/` ou relativo a `baseDir`); placeholder desconhecido fica intacto; arquivo/env
+  ausente → vazio.
+- `Load` passa a ler **todos** os arquivos via `readConfigMaps` (JSONC + interpolação recursiva em
+  **qualquer string**, baseDir por arquivo) e a alimentar o viper com o mapa mesclado; viper guarda
+  apenas defaults/env. `configureViper` não faz mais descoberta de arquivos.
+- `jsonSources`/`readAgentConfigsFrom`/`interpolateAgentConfigs`: as declarações `agents`/`agent`
+  (v2 vence sobre o deprecado) são lidas por arquivo com JSONC e interpolação de todas as strings
+  (`description`, `mode`, `team`, `model`, `reasoningEffort`, `color`, `system`).
+
 ## Testes
 
 - `internal/config`: JSONC, precedência de diretórios, `{env:}`/`{file:}`, cada chave nova.

@@ -82,11 +82,11 @@ type ShellConfig struct {
 
 // Config is the main configuration structure for the application.
 type Config struct {
-	Data         Data                              `json:"data"`
-	WorkingDir   string                            `json:"wd,omitempty"`
-	MCPServers   map[string]MCPServer              `json:"mcpServers,omitempty"`
-	Providers    map[models.ModelProvider]Provider `json:"providers,omitempty"`
-	LSP          map[string]LSPConfig              `json:"lsp,omitempty"`
+	Data       Data                              `json:"data"`
+	WorkingDir string                            `json:"wd,omitempty"`
+	MCPServers map[string]MCPServer              `json:"mcpServers,omitempty"`
+	Providers  map[models.ModelProvider]Provider `json:"providers,omitempty"`
+	LSP        map[string]LSPConfig              `json:"lsp,omitempty"`
 	// Agents is the unified agent map (opencode v2): builtin agents ("coder",
 	// "task", "title", "summarizer") and custom agents share one namespace and
 	// one shape (AgentConfig), mirroring the markdown frontmatter (Spec 13).
@@ -104,13 +104,13 @@ type Config struct {
 	// only to back-fill DefaultAgent when the v2 key is absent.
 	//
 	// Deprecated: use DefaultAgent ("default_agent").
-	DefaultAgentV1 string `json:"defaultAgent,omitempty" mapstructure:"defaultagent"`
-	Debug        bool                                `json:"debug,omitempty"`
-	DebugLSP     bool                                `json:"debugLSP,omitempty"`
-	ContextPaths []string                            `json:"contextPaths,omitempty"`
-	TUI          TUIConfig                           `json:"tui"`
-	Shell        ShellConfig                         `json:"shell,omitempty"`
-	AutoCompact  bool                                `json:"autoCompact,omitempty"`
+	DefaultAgentV1 string      `json:"defaultAgent,omitempty" mapstructure:"defaultagent"`
+	Debug          bool        `json:"debug,omitempty"`
+	DebugLSP       bool        `json:"debugLSP,omitempty"`
+	ContextPaths   []string    `json:"contextPaths,omitempty"`
+	TUI            TUIConfig   `json:"tui"`
+	Shell          ShellConfig `json:"shell,omitempty"`
+	AutoCompact    bool        `json:"autoCompact,omitempty"`
 }
 
 // Application constants
@@ -157,13 +157,10 @@ func Load(workingDir string, debug bool) (*Config, error) {
 	configureViper()
 	setDefaults(debug)
 
-	// Read global config
-	if err := readConfig(viper.ReadInConfig()); err != nil {
-		return cfg, err
-	}
-
-	// Load and merge local config
-	mergeLocalConfig(workingDir)
+	// Read every config file (v2 opencode.json(c) + legacy .opencode.json) in
+	// precedence order, applying JSONC and string interpolation, then feed the
+	// merged map to viper (Spec 11a).
+	viper.MergeConfigMap(readConfigMaps(workingDir))
 
 	setProviderDefaults()
 
@@ -259,10 +256,12 @@ func agentSearchDirs() []string {
 // global directories and the project directory. Every input is an
 // agentdef.Source registered in precedence order (later wins):
 //
-//	builtins < global markdown < global JSON < project markdown < project JSON
+//	builtins < global markdown < config files (JSON, in precedence order) < project markdown
 //
 // Markdown and the JSON "agents"/"agent" maps share one Definition type, so
-// there is a single code path (Spec 01, Spec 13).
+// there is a single code path (Spec 01, Spec 13). The JSON config files are
+// themselves ordered by configFiles (global < ancestors < .opencode < legacy <
+// system), so a project config wins over a global one (Spec 11a).
 func loadAgentDefinitions(workingDir string) error {
 	builtins := staticSource(builtinDefinitions())
 
@@ -275,9 +274,8 @@ func loadAgentDefinitions(workingDir string) error {
 
 	sources := []agentdef.Source{builtins}
 	sources = append(sources, globalFiles...)
-	sources = append(sources, jsonSources(configFileDirs())...)
+	sources = append(sources, jsonSources(workingDir)...)
 	sources = append(sources, agentdef.FileSource{Dir: projectDir})
-	sources = append(sources, jsonSources([]string{workingDir})...)
 
 	reg, err := agentdef.Load(sources...)
 	if err != nil {
@@ -324,59 +322,46 @@ func applyDefaultAgent(reg *agentdef.Registry, name string) {
 	logging.Warn("invalid default agent, falling back to coder", "agent", name)
 }
 
-// configFileDirs returns the directories that may hold a global ".opencode.json",
-// mirroring viper's search paths.
-func configFileDirs() []string {
-	var dirs []string
-	home, err := os.UserHomeDir()
-	if err == nil && home != "" {
-		dirs = append(dirs, home)
-	}
-	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
-		dirs = append(dirs, filepath.Join(xdg, appName))
-	} else if home != "" {
-		dirs = append(dirs, filepath.Join(home, ".config", appName))
-	}
-	return dirs
-}
-
-// jsonSources reads the "agents" (v2) and "agent" (deprecated) maps from the
-// ".opencode.json" in each dir, in order (later wins), and returns them as one
-// Source per directory. The prompt of each definition is resolved relative to
-// the directory it was declared in.
-func jsonSources(dirs []string) []agentdef.Source {
+// jsonSources reads the agent definitions declared in the configuration files
+// (v2 opencode.json(c) and the legacy ".opencode.json"), in precedence order, and
+// returns one Source per file. Strings in each declaration are interpolated
+// relative to the directory of the file that declared them.
+func jsonSources(workingDir string) []agentdef.Source {
 	var sources []agentdef.Source
-	for _, dir := range dirs {
-		agents, err := readAgentConfigs(dir)
+	for _, file := range configFiles(workingDir) {
+		agents, err := readAgentConfigsFrom(file.path)
 		if err != nil {
-			logging.Warn("failed to read agent definitions from config", "dir", dir, "error", err)
+			logging.Warn("failed to read agent definitions from config", "file", file.path, "error", err)
 			continue
 		}
 		if len(agents) == 0 {
 			continue
 		}
 		sources = append(sources, agentdef.JSONSource{
-			Agents:        agents,
-			BaseDir:       dir,
+			Agents:        interpolateAgentConfigs(agents, file.dir),
+			BaseDir:       file.dir,
 			ResolvePrompt: resolvePrompt,
 		})
 	}
 	return sources
 }
 
-// readAgentConfigs returns the merged agent declarations of one directory,
-// combining the v2 "agents" map with the deprecated "agent" map (v2 wins).
-func readAgentConfigs(dir string) (map[string]AgentDefinition, error) {
-	path := filepath.Join(dir, fmt.Sprintf(".%s.json", appName))
+// readAgentConfigsFrom returns the merged agent declarations of one config file,
+// combining the v2 "agents" map with the deprecated "agent" map (v2 wins). It
+// tolerates JSONC (comments and trailing commas).
+func readAgentConfigsFrom(path string) (map[string]AgentDefinition, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, nil
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
 	}
 	var fileCfg struct {
 		Agents map[string]AgentDefinition `json:"agents"`
 		Agent  map[string]AgentDefinition `json:"agent"`
 	}
-	if err := json.Unmarshal(data, &fileCfg); err != nil {
+	if err := json.Unmarshal([]byte(stripJsonc(string(data))), &fileCfg); err != nil {
 		return nil, err
 	}
 	if len(fileCfg.Agent) > 0 {
@@ -392,27 +377,34 @@ func readAgentConfigs(dir string) (map[string]AgentDefinition, error) {
 	return out, nil
 }
 
-// resolvePrompt expands the "{file:./path}" prompt form into the file contents
-// (path relative to baseDir). Any other value is returned as inline text.
+// interpolateAgentConfigs applies {env:}/{file:} interpolation to every string
+// field of each agent declaration, using baseDir for relative paths (Spec 11a).
+func interpolateAgentConfigs(agents map[string]AgentDefinition, baseDir string) map[string]AgentDefinition {
+	out := make(map[string]AgentDefinition, len(agents))
+	for name, def := range agents {
+		def.Description = interpolate(def.Description, baseDir)
+		def.Mode = interpolate(def.Mode, baseDir)
+		def.Team = interpolate(def.Team, baseDir)
+		def.Model = interpolate(def.Model, baseDir)
+		def.ReasoningEffort = interpolate(def.ReasoningEffort, baseDir)
+		def.Color = interpolate(def.Color, baseDir)
+		def.System = interpolate(def.System, baseDir)
+		out[name] = def
+	}
+	return out
+}
+
+// readAgentConfigs returns the agent declarations of the legacy ".opencode.json"
+// in dir (back-compat path used by tests).
+func readAgentConfigs(dir string) (map[string]AgentDefinition, error) {
+	return readAgentConfigsFrom(filepath.Join(dir, legacyConfigFilename))
+}
+
+// resolvePrompt expands the interpolation placeholders in an agent prompt,
+// resolving "{file:...}" relative to baseDir (the directory of the config file
+// that declared it). See interpolate.
 func resolvePrompt(prompt, baseDir string) string {
-	const prefix = "{file:"
-	if !strings.HasPrefix(prompt, prefix) || !strings.HasSuffix(prompt, "}") {
-		return prompt
-	}
-	rel := strings.TrimSpace(strings.TrimSuffix(strings.TrimPrefix(prompt, prefix), "}"))
-	if rel == "" {
-		return ""
-	}
-	path := rel
-	if !filepath.IsAbs(path) {
-		path = filepath.Join(baseDir, rel)
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		logging.Warn("failed to read agent prompt file", "file", path, "error", err)
-		return ""
-	}
-	return string(data)
+	return interpolate(prompt, baseDir)
 }
 
 // builtinDefinitions returns the definitions for the agents built into opencode.
@@ -449,13 +441,9 @@ func builtinDefinitions() []*agentdef.Definition {
 	}
 }
 
-// configureViper sets up viper's configuration paths and environment variables.
+// configureViper sets up viper's environment variables. Configuration files are
+// discovered separately by configFiles (Spec 11a) and merged in.
 func configureViper() {
-	viper.SetConfigName(fmt.Sprintf(".%s", appName))
-	viper.SetConfigType("json")
-	viper.AddConfigPath("$HOME")
-	viper.AddConfigPath(fmt.Sprintf("$XDG_CONFIG_HOME/%s", appName))
-	viper.AddConfigPath(fmt.Sprintf("$HOME/.config/%s", appName))
 	viper.SetEnvPrefix(strings.ToUpper(appName))
 	viper.AutomaticEnv()
 }
@@ -665,33 +653,6 @@ func hasCopilotCredentials() bool {
 		return true
 	}
 	return false
-}
-
-// readConfig handles the result of reading a configuration file.
-func readConfig(err error) error {
-	if err == nil {
-		return nil
-	}
-
-	// It's okay if the config file doesn't exist
-	if _, ok := err.(viper.ConfigFileNotFoundError); ok {
-		return nil
-	}
-
-	return fmt.Errorf("failed to read config: %w", err)
-}
-
-// mergeLocalConfig loads and merges configuration from the local directory.
-func mergeLocalConfig(workingDir string) {
-	local := viper.New()
-	local.SetConfigName(fmt.Sprintf(".%s", appName))
-	local.SetConfigType("json")
-	local.AddConfigPath(workingDir)
-
-	// Merge local config if it exists
-	if err := local.ReadInConfig(); err == nil {
-		viper.MergeConfigMap(local.AllSettings())
-	}
 }
 
 // applyDefaultValues sets default values for configuration fields that need processing.

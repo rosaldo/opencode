@@ -128,7 +128,12 @@ func TestJSONSourcesLocalWins(t *testing.T) {
 		"agents": {"audit": {"description": "project", "mode": "subagent"}}
 	}`)
 
-	reg, err := agentdef.Load(jsonSources([]string{global, project})...)
+	gAgents, _ := readAgentConfigsFrom(filepath.Join(global, legacyConfigFilename))
+	pAgents, _ := readAgentConfigsFrom(filepath.Join(project, legacyConfigFilename))
+	reg, err := agentdef.Load(
+		agentdef.JSONSource{Agents: gAgents, BaseDir: global, ResolvePrompt: resolvePrompt},
+		agentdef.JSONSource{Agents: pAgents, BaseDir: project, ResolvePrompt: resolvePrompt},
+	)
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
@@ -169,8 +174,9 @@ func TestReadAgentConfigsMissingFile(t *testing.T) {
 	if len(agents) != 0 {
 		t.Fatalf("agents = %v, want empty", agents)
 	}
-	if len(jsonSources([]string{t.TempDir()})) != 0 {
-		t.Fatal("missing config must yield no sources")
+	// An empty directory contributes no v2 config files of its own.
+	if files := filesIn(t.TempDir()); len(files) != 0 {
+		t.Fatalf("files = %v, want none", files)
 	}
 }
 
