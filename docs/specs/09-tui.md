@@ -91,9 +91,19 @@ Fechar lacunas da TUI: **keybinds configuráveis**, suporte a **mouse/scroll**, 
   - **Paste de imagem**: `internal/tui/util/clipboard.go` (macOS `pngpaste`; Linux `wl-paste`/`xclip`),
     com fallback para texto; `ctrl+v` no editor anexa imagem (respeita `maxAttachments`) ou cola texto;
     `SniffImageMime`. Testes: `internal/tui/util/clipboard_test.go`.
-- Pendências conscientes: hyperlink/kitty/sixel e renderização de imagem nas mensagens do chat
-  ficam para a spec de imagem própria; hit-test de zonas (`bubblezone`) para clique/seleção
-  precisa (hoje só scroll por roda) — não bloqueia os critérios de aceite centrais.
+  - **Imagens/kitty/sixel + hyperlink** (09b): `internal/tui/util/terminal_image.go` —
+    `DetectImageProtocol` (kitty ≫ sixel ≫ half-block) e `RenderHalfBlocks` (truecolor `▀`),
+    `KittyGraphics` (chunks base64 da graphics protocol), `Hyperlink` (OSC 8) e `SniffImageBytes`.
+    `message.go` (`renderUserMessage`) desenha anexos de imagem inline (kitty quando disponível,
+    senão half-blocks) e transforma o chip de arquivo num hyperlink `file://` clicável. Testes:
+    `internal/tui/util/terminal_image_test.go`.
+  - **Hit-test de zonas** (09b): `internal/tui/util/zones.go` (`ZoneSet` sobre o `bubblezone`
+    global; `Mark` registra/decora, `At` resolve o id sob o cursor). A lista de mensagens
+    (`chat/list.go`) marca cada mensagem (`msg:<id>`) e, em clique esquerdo, foca e rola até a
+    mensagem clicada (`scrollToMessage`). Teste de hit-test em `terminal_image_test.go`.
+- Pendências conscientes: codificação **sixel** de fato (hoje o protocolo sixel detectado usa o
+  fallback half-block, que funciona em qualquer terminal truecolor) e integração de hit-test das
+  demais zonas (sidebar/diálogos).
 
 ## Riscos
 

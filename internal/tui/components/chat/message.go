@@ -1,9 +1,15 @@
 package chat
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -18,6 +24,7 @@ import (
 	"github.com/opencode-ai/opencode/internal/message"
 	"github.com/opencode-ai/opencode/internal/tui/styles"
 	"github.com/opencode-ai/opencode/internal/tui/theme"
+	"github.com/opencode-ai/opencode/internal/tui/util"
 )
 
 type uiMessageType int
@@ -87,6 +94,10 @@ func renderUserMessage(msg message.Message, isFocused bool, width int, position 
 		Background(t.TextMuted()).
 		Foreground(t.Text())
 	for _, attachment := range msg.BinaryContent() {
+		if out := renderAttachmentImage(attachment, width); out != "" {
+			styledAttachments = append(styledAttachments, out)
+			continue
+		}
 		file := filepath.Base(attachment.Path)
 		var filename string
 		if len(file) > 10 {
@@ -94,7 +105,8 @@ func renderUserMessage(msg message.Message, isFocused bool, width int, position 
 		} else {
 			filename = fmt.Sprintf(" %s %s", styles.DocumentIcon, file)
 		}
-		styledAttachments = append(styledAttachments, attachmentStyles.Render(filename))
+		label := util.Hyperlink(filename, fileURL(attachment.Path))
+		styledAttachments = append(styledAttachments, attachmentStyles.Render(label))
 	}
 	content := ""
 	if len(styledAttachments) > 0 {
@@ -111,6 +123,70 @@ func renderUserMessage(msg message.Message, isFocused bool, width int, position 
 		content:     content,
 	}
 	return userMsg
+}
+
+// maxImageWidth caps how wide an inline image may be drawn, in cells.
+const maxImageWidth = 60
+
+// renderAttachmentImage draws an image attachment inline when the content is an
+// image and the terminal can display one, returning "" otherwise so the caller
+// falls back to a filename chip (Spec 09). Kitty terminals get the graphics
+// protocol; every other capable terminal gets truecolor half-blocks.
+func renderAttachmentImage(attachment message.BinaryContent, width int) string {
+	data := attachment.Data
+	if len(data) == 0 && attachment.Path != "" {
+		if b, err := os.ReadFile(attachment.Path); err == nil {
+			data = b
+		}
+	}
+	if len(data) == 0 {
+		return ""
+	}
+	if mime, ok := util.SniffImageBytes(data); !ok || !strings.HasPrefix(mime, "image/") {
+		return ""
+	}
+	img, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return ""
+	}
+	b := img.Bounds()
+	if b.Dx() == 0 || b.Dy() == 0 {
+		return ""
+	}
+
+	cols := width - 4
+	if cols > maxImageWidth {
+		cols = maxImageWidth
+	}
+	if cols < 8 {
+		cols = 8
+	}
+	// Terminal cells are about twice as tall as wide, so halve the row count to
+	// keep the image's aspect ratio.
+	rows := cols * b.Dy() / b.Dx() / 2
+	if rows < 1 {
+		rows = 1
+	}
+
+	switch util.DetectImageProtocol(os.Getenv) {
+	case util.ImageKitty:
+		if out := util.KittyGraphics(data, cols, rows); out != "" {
+			return out
+		}
+	}
+	return util.RenderHalfBlocks(img, cols, rows)
+}
+
+// fileURL builds a file:// URL for an attachment path so the terminal can make
+// the filename clickable (OSC 8).
+func fileURL(path string) string {
+	if path == "" {
+		return ""
+	}
+	if abs, err := filepath.Abs(path); err == nil {
+		path = abs
+	}
+	return "file://" + path
 }
 
 // Returns multiple uiMessages because of the tool calls

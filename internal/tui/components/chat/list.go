@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/spinner"
@@ -36,6 +37,7 @@ type messagesCmp struct {
 	spinner       spinner.Model
 	rendering     bool
 	attachments   viewport.Model
+	zones         *util.ZoneSet
 }
 type renderFinishedMsg struct{}
 
@@ -94,6 +96,16 @@ func (m *messagesCmp) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			u, cmd := m.viewport.Update(msg)
 			m.viewport = u
 			cmds = append(cmds, cmd)
+		}
+
+	case tea.MouseMsg:
+		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
+			if id, ok := m.zones.At(msg); ok {
+				msgID := strings.TrimPrefix(id, "msg:")
+				m.currentMsgID = msgID
+				m.scrollToMessage(msgID)
+				m.renderView()
+			}
 		}
 
 	case renderFinishedMsg:
@@ -239,9 +251,11 @@ func (m *messagesCmp) renderView() {
 		}
 	}
 
+	m.zones.Reset()
 	messages := make([]string, 0)
 	for _, v := range m.uiMessages {
-		messages = append(messages, lipgloss.JoinVertical(lipgloss.Left, v.content),
+		marked := m.zones.Mark("msg:"+v.ID, v.content)
+		messages = append(messages, lipgloss.JoinVertical(lipgloss.Left, marked),
 			baseStyle.
 				Width(m.width).
 				Render(
@@ -260,6 +274,19 @@ func (m *messagesCmp) renderView() {
 				),
 			),
 	)
+}
+
+// scrollToMessage scrolls the viewport so the given message is visible. The
+// offset is the accumulated height of the messages before it plus their spacing.
+func (m *messagesCmp) scrollToMessage(id string) {
+	offset := 0
+	for _, v := range m.uiMessages {
+		if v.ID == id {
+			m.viewport.SetYOffset(offset)
+			return
+		}
+		offset += v.height + 1
+	}
 }
 
 func (m *messagesCmp) View() string {
@@ -483,5 +510,6 @@ func NewMessagesCmp(app *app.App) tea.Model {
 		viewport:      vp,
 		spinner:       s,
 		attachments:   attachmets,
+		zones:         util.NewZoneSet(),
 	}
 }
