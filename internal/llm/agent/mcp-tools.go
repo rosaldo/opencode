@@ -137,10 +137,19 @@ func NewMcpTool(name string, tool mcp.Tool, permissions permission.Service, mcpC
 	}
 }
 
-var mcpTools []tools.BaseTool
+// mcpToolDef is the permission-free description of one MCP tool. Only this is
+// cached: the permission service is bound when the tools are built, so that
+// every agent can have its own policy.
+type mcpToolDef struct {
+	mcpName   string
+	tool      mcp.Tool
+	mcpConfig config.MCPServer
+}
 
-func getTools(ctx context.Context, name string, m config.MCPServer, permissions permission.Service, c MCPClient) []tools.BaseTool {
-	var stdioTools []tools.BaseTool
+var mcpToolDefs []mcpToolDef
+
+func discoverTools(ctx context.Context, name string, m config.MCPServer, c MCPClient) []mcpToolDef {
+	var defs []mcpToolDef
 	initRequest := mcp.InitializeRequest{}
 	initRequest.Params.ProtocolVersion = mcp.LATEST_PROTOCOL_VERSION
 	initRequest.Params.ClientInfo = mcp.Implementation{
@@ -151,26 +160,28 @@ func getTools(ctx context.Context, name string, m config.MCPServer, permissions 
 	_, err := c.Initialize(ctx, initRequest)
 	if err != nil {
 		logging.Error("error initializing mcp client", "error", err)
-		return stdioTools
+		return defs
 	}
 	toolsRequest := mcp.ListToolsRequest{}
-	tools, err := c.ListTools(ctx, toolsRequest)
+	result, err := c.ListTools(ctx, toolsRequest)
 	if err != nil {
 		logging.Error("error listing tools", "error", err)
-		return stdioTools
+		return defs
 	}
-	for _, t := range tools.Tools {
-		stdioTools = append(stdioTools, NewMcpTool(name, t, permissions, m))
+	for _, t := range result.Tools {
+		defs = append(defs, mcpToolDef{mcpName: name, tool: t, mcpConfig: m})
 	}
 	defer c.Close()
-	return stdioTools
+	return defs
 }
 
-func GetMcpTools(ctx context.Context, permissions permission.Service) []tools.BaseTool {
-	if len(mcpTools) > 0 {
-		return mcpTools
+func discoverMcpTools(ctx context.Context) []mcpToolDef {
+	var defs []mcpToolDef
+	cfg := config.Get()
+	if cfg == nil {
+		return defs
 	}
-	for name, m := range config.Get().MCPServers {
+	for name, m := range cfg.MCPServers {
 		switch m.Type {
 		case config.MCPStdio:
 			c, err := client.NewStdioMCPClient(
@@ -183,7 +194,7 @@ func GetMcpTools(ctx context.Context, permissions permission.Service) []tools.Ba
 				continue
 			}
 
-			mcpTools = append(mcpTools, getTools(ctx, name, m, permissions, c)...)
+			defs = append(defs, discoverTools(ctx, name, m, c)...)
 		case config.MCPSse:
 			c, err := client.NewSSEMCPClient(
 				m.URL,
@@ -193,9 +204,20 @@ func GetMcpTools(ctx context.Context, permissions permission.Service) []tools.Ba
 				logging.Error("error creating mcp client", "error", err)
 				continue
 			}
-			mcpTools = append(mcpTools, getTools(ctx, name, m, permissions, c)...)
+			defs = append(defs, discoverTools(ctx, name, m, c)...)
 		}
 	}
 
+	return defs
+}
+
+func GetMcpTools(ctx context.Context, permissions permission.Service) []tools.BaseTool {
+	if len(mcpToolDefs) == 0 {
+		mcpToolDefs = discoverMcpTools(ctx)
+	}
+	mcpTools := make([]tools.BaseTool, 0, len(mcpToolDefs))
+	for _, def := range mcpToolDefs {
+		mcpTools = append(mcpTools, NewMcpTool(def.mcpName, def.tool, permissions, def.mcpConfig))
+	}
 	return mcpTools
 }

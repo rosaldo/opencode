@@ -22,6 +22,10 @@ type BashPermissionsParams struct {
 	Timeout int    `json:"timeout"`
 }
 
+// PermissionCommand implements permission.CommandProvider so an agent policy
+// can match the command against its bash patterns.
+func (p BashPermissionsParams) PermissionCommand() string { return p.Command }
+
 type BashResponseMetadata struct {
 	StartTime int64 `json:"start_time"`
 	EndTime   int64 `json:"end_time"`

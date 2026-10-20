@@ -3,6 +3,8 @@ package agent
 import (
 	"context"
 
+	"github.com/opencode-ai/opencode/internal/agentdef"
+	"github.com/opencode-ai/opencode/internal/config"
 	"github.com/opencode-ai/opencode/internal/history"
 	"github.com/opencode-ai/opencode/internal/llm/tools"
 	"github.com/opencode-ai/opencode/internal/lsp"
@@ -11,6 +13,8 @@ import (
 	"github.com/opencode-ai/opencode/internal/session"
 )
 
+// CoderAgentTools returns the full tool set of the coder agent. Kept as a thin
+// wrapper over FullToolSet for callers that do not have an agent definition.
 func CoderAgentTools(
 	permissions permission.Service,
 	sessions session.Service,
@@ -18,34 +22,18 @@ func CoderAgentTools(
 	history history.Service,
 	lspClients map[string]*lsp.Client,
 ) []tools.BaseTool {
-	ctx := context.Background()
-	otherTools := GetMcpTools(ctx, permissions)
-	if len(lspClients) > 0 {
-		otherTools = append(otherTools, tools.NewDiagnosticsTool(lspClients))
-	}
-	return append(
-		[]tools.BaseTool{
-			tools.NewBashTool(permissions),
-			tools.NewEditTool(lspClients, permissions, history),
-			tools.NewFetchTool(permissions),
-			tools.NewGlobTool(),
-			tools.NewGrepTool(),
-			tools.NewLsTool(),
-			tools.NewSourcegraphTool(),
-			tools.NewViewTool(lspClients),
-			tools.NewPatchTool(lspClients, permissions, history),
-			tools.NewWriteTool(lspClients, permissions, history),
-			NewAgentTool(sessions, messages, lspClients),
-		}, otherTools...,
-	)
+	caller, _ := agentdef.Get().Get(string(config.AgentCoder))
+	return FullToolSet(context.Background(), caller, AgentToolDeps{
+		Permissions: permissions,
+		Sessions:    sessions,
+		Messages:    messages,
+		History:     history,
+		LspClients:  lspClients,
+	})
 }
 
+// TaskAgentTools returns the read only tool set of the task subagent. Kept as a
+// thin wrapper over TaskToolSet for callers that do not have a definition.
 func TaskAgentTools(lspClients map[string]*lsp.Client) []tools.BaseTool {
-	return []tools.BaseTool{
-		tools.NewGlobTool(),
-		tools.NewGrepTool(),
-		tools.NewLsTool(),
-		tools.NewSourcegraphTool(),
-		tools.NewViewTool(lspClients),
-	}
+	return TaskToolSet(AgentToolDeps{LspClients: lspClients})
 }
