@@ -17,9 +17,12 @@ OUT="$ROOT/CHANGELOG.md"
   { git -C "$ROOT" log --pretty=$'%cs\t%s' \
     | grep -E $'\t(feat|fix|refactor|docs|chore|major)\\(v[0-9]' || true; } \
     | while IFS=$'\t' read -r date subject; do
+        # Split on the FIRST `(...): ` only, so a message that itself contains parentheses
+        # (e.g. "… fork (TS v2 parity)") does not corrupt the version or the text.
         type="${subject%%(*}"
-        ver="${subject#*\(}"; ver="${ver%)*}"
-        msg="${subject#*): }"
+        rest="${subject#*\(}"
+        ver="${rest%%):*}"
+        msg="${rest#*): }"
         printf -- '- **%s** (%s) · `%s` — %s\n' "$ver" "$date" "$type" "$msg"
       done
 } > "$OUT"
