@@ -97,8 +97,14 @@ pontos de integração com a nuvem (`zen`/modelos hospedados).
   `opencode.ai/docs/zen` (GPT‑5.x, Claude via gateway, GLM, Kimi, Qwen, DeepSeek, MiniMax,
   Grok, Mistral e os *free*). Seleção por `opencode/<model-id>` (ex.: `opencode/gpt-5.5`),
   igual ao TS, resolvida por `ResolveModelID`. Usuários podem declarar/sobrescrever modelos
-  em `providers.opencode.models` (Spec 06b). Testes:
-  `internal/llm/provider/opencode_test.go` (base URL do gateway e resolução `opencode/<id>`).
+  em `providers.opencode.models` (Spec 06b). Comando **`/connect`** na TUI abre um diálogo para
+  colar a API key (`config.SetProviderAPIKey`, persistida em `~/.opencode.json`). **Default
+  amigável**: sem nenhuma credencial, o modelo cai no tier grátis do Zen (`opencode/big-pickle`
+  para o coder; GLM Flash Free/MiMo Free para os agentes auxiliares), e o provider `opencode` é
+  registrado e mantido habilitado mesmo sem key. Testes:
+  `internal/llm/provider/opencode_test.go` (base URL do gateway e resolução `opencode/<id>`),
+  `internal/config/connect_test.go` (persistência da key e default grátis),
+  `internal/tui/components/dialog/connect_test.go` (diálogo).
 - Sem config de share, comportamento inalterado (só local) — critério 5 atendido.
 
 ## Riscos

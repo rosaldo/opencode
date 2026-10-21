@@ -632,6 +632,9 @@ func setProviderDefaults() {
 	if apiKey := os.Getenv("XAI_API_KEY"); apiKey != "" {
 		viper.SetDefault("providers.xai.apiKey", apiKey)
 	}
+	if apiKey := os.Getenv("OPENCODE_API_KEY"); apiKey != "" {
+		viper.SetDefault("providers.opencode.apiKey", apiKey)
+	}
 	if apiKey := os.Getenv("AZURE_OPENAI_ENDPOINT"); apiKey != "" {
 		// api-key may be empty when using Entra ID credentials – that's okay
 		viper.SetDefault("providers.azure.apiKey", os.Getenv("AZURE_OPENAI_API_KEY"))
@@ -743,6 +746,29 @@ func setProviderDefaults() {
 		viper.SetDefault("agents.title.model", models.VertexAIGemini25Flash)
 		return
 	}
+
+	// OpenCode Zen configuration (Spec 12d). Explicit key first.
+	if key := viper.GetString("providers.opencode.apiKey"); strings.TrimSpace(key) != "" {
+		viper.SetDefault("agents.coder.model", models.OpencodeGPT55)
+		viper.SetDefault("agents.summarizer.model", models.OpencodeGLM53)
+		viper.SetDefault("agents.task.model", models.OpencodeGLM53)
+		viper.SetDefault("agents.title.model", models.OpencodeGLM53FlashFr)
+		return
+	}
+	if key := viper.GetString("providers.opencode.settings.apiKey"); strings.TrimSpace(key) != "" {
+		viper.SetDefault("agents.coder.model", models.OpencodeGPT55)
+		viper.SetDefault("agents.summarizer.model", models.OpencodeGLM53)
+		viper.SetDefault("agents.task.model", models.OpencodeGLM53)
+		viper.SetDefault("agents.title.model", models.OpencodeGLM53FlashFr)
+		return
+	}
+
+	// Friendly default: nothing else is configured, so fall back to OpenCode
+	// Zen's free tier. This makes the app work out of the box with no keys.
+	viper.SetDefault("agents.coder.model", models.OpencodeBigPickle)
+	viper.SetDefault("agents.summarizer.model", models.OpencodeGLM53FlashFr)
+	viper.SetDefault("agents.task.model", models.OpencodeGLM53FlashFr)
+	viper.SetDefault("agents.title.model", models.OpencodeMimoFree)
 }
 
 // hasAWSCredentials checks if AWS credentials are available in the environment.
@@ -924,6 +950,12 @@ func applyDefaultValues() {
 			cfg.MCPServers[k] = v
 		}
 	}
+	// Ensure the OpenCode Zen provider always exists and stays enabled: its free
+	// tier is reachable without an API key, so it must not be disabled by the
+	// key-less check in Validate (Spec 12d).
+	if _, ok := cfg.Providers[models.ProviderOpencode]; !ok {
+		cfg.Providers[models.ProviderOpencode] = Provider{}
+	}
 }
 
 // It validates model IDs and providers, ensuring they are supported.
@@ -969,6 +1001,7 @@ func validateAgent(cfg *Config, name string, agent AgentDefinition) error {
 
 			// Set default model based on available providers
 			if setDefaultModelForAgent(name) {
+				ensureProviderRegistered(cfg.Agents[name].Model)
 				logging.Info("set default model for agent", "agent", name, "model", cfg.Agents[name].Model)
 			} else {
 				return fmt.Errorf("no valid provider available for agent %s", name)
@@ -980,8 +1013,9 @@ func validateAgent(cfg *Config, name string, agent AgentDefinition) error {
 			}
 			logging.Info("added provider from environment", "provider", provider)
 		}
-	} else if providerCfg.Disabled || providerCfg.EffectiveAPIKey() == "" {
-		// Provider is disabled or has no API key
+	} else if providerCfg.Disabled || (providerCfg.EffectiveAPIKey() == "" && provider != models.ProviderOpencode) {
+		// Provider is disabled or has no API key. OpenCode Zen is exempt: its
+		// free tier is usable without a key (Spec 12d).
 		logging.Warn("provider is disabled or has no API key, reverting to default",
 			"agent", name,
 			"model", agent.Model,
@@ -989,6 +1023,7 @@ func validateAgent(cfg *Config, name string, agent AgentDefinition) error {
 
 		// Set default model based on available providers
 		if setDefaultModelForAgent(name) {
+			ensureProviderRegistered(cfg.Agents[name].Model)
 			logging.Info("set default model for agent", "agent", name, "model", cfg.Agents[name].Model)
 		} else {
 			return fmt.Errorf("no valid provider available for agent %s", name)
@@ -1082,6 +1117,10 @@ func Validate() error {
 
 	// Validate providers
 	for provider, providerCfg := range cfg.Providers {
+		// OpenCode Zen's free tier needs no key; never auto-disable it (Spec 12d).
+		if provider == models.ProviderOpencode {
+			continue
+		}
 		if providerCfg.EffectiveAPIKey() == "" && !providerCfg.Disabled {
 			fmt.Printf("provider has no API key, marking as disabled %s", provider)
 			logging.Warn("provider has no API key, marking as disabled", "provider", provider)
@@ -1303,7 +1342,15 @@ func setDefaultModelForAgent(agent string) bool {
 		return true
 	}
 
-	return false
+	// Friendly default (Spec 12d): with no credentials of any kind, fall back to
+	// OpenCode Zen's free tier so the app works out of the box. The model is
+	// reachable without an API key on the free tier; /connect can add a key.
+	maxTokens := int64(5000)
+	if agent == string(AgentTitle) {
+		maxTokens = 80
+	}
+	setModel(models.OpencodeBigPickle, maxTokens, "")
+	return true
 }
 
 func updateCfgFile(updateCfg func(config *Config)) error {
@@ -1435,6 +1482,101 @@ func UpdateTheme(themeName string) error {
 	return updateCfgFile(func(config *Config) {
 		config.TUI.Theme = themeName
 	})
+}
+
+// ensureProviderRegistered makes sure the provider that owns the given model id
+// exists in cfg.Providers, so a defaulted model is actually reachable at
+// runtime (Spec 12d). The env var for the provider is used as the API key when
+// present; otherwise the provider is registered enabled but key-less (the
+// OpenCode Zen free tier works without a key).
+func ensureProviderRegistered(modelID string) {
+	if cfg == nil {
+		return
+	}
+	id, ok := models.ResolveModelID(modelID)
+	if !ok {
+		return
+	}
+	provider := models.SupportedModels[id].Provider
+	if _, exists := cfg.Providers[provider]; exists {
+		return
+	}
+	cfg.Providers[provider] = Provider{APIKey: getProviderAPIKey(provider)}
+	logging.Info("registered provider for default model", "provider", provider, "model", id)
+}
+
+// SetProviderAPIKey stores an API key for a provider and persists it to the
+// user config file (Spec 12d). The provider is enabled and, when no primary
+// model is configured yet, its most popular model becomes the coder default.
+// Used by the TUI /connect command.
+func SetProviderAPIKey(provider models.ModelProvider, apiKey string) error {
+	if cfg == nil {
+		return fmt.Errorf("config not loaded")
+	}
+
+	providerCfg := cfg.Providers[provider]
+	providerCfg.Settings.APIKey = apiKey
+	providerCfg.Disabled = false
+	cfg.Providers[provider] = providerCfg
+
+	// Update the file config.
+	if err := updateCfgFile(func(config *Config) {
+		if config.Providers == nil {
+			config.Providers = make(map[models.ModelProvider]Provider)
+		}
+		pc := config.Providers[provider]
+		pc.Settings.APIKey = apiKey
+		pc.Disabled = false
+		config.Providers[provider] = pc
+	}); err != nil {
+		return err
+	}
+
+	// If the coder still points at an unconfigured provider, adopt this one's
+	// default model so the freshly connected provider is actually used.
+	coder := cfg.Agents[string(AgentCoder)]
+	if coder.Model == "" {
+		if m, ok := defaultModelForProvider(provider); ok {
+			if err := UpdateAgentModel(AgentCoder, m); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// defaultModelForProvider returns a sensible default model id for a provider,
+// used when /connect adopts a freshly configured provider. A per-provider
+// preferred model wins; otherwise the lexicographically smallest model is used
+// (deterministic).
+func defaultModelForProvider(provider models.ModelProvider) (models.ModelID, bool) {
+	if preferred, ok := preferredDefaultModel[provider]; ok {
+		if _, exists := models.SupportedModels[preferred]; exists {
+			return preferred, true
+		}
+	}
+	var best models.ModelID
+	found := false
+	for id, m := range models.SupportedModels {
+		if m.Provider != provider {
+			continue
+		}
+		if !found || id < best {
+			best = id
+			found = true
+		}
+	}
+	if !found {
+		return "", false
+	}
+	return best, true
+}
+
+// preferredDefaultModel maps a provider to the model chosen when it is
+// connected without an explicit selection. OpenCode Zen defaults to its free
+// tier so a key-less or freshly connected setup works immediately.
+var preferredDefaultModel = map[models.ModelProvider]models.ModelID{
+	models.ProviderOpencode: models.OpencodeBigPickle,
 }
 
 // Tries to load Github token from all possible locations

@@ -11,6 +11,7 @@ import (
 	"github.com/opencode-ai/opencode/internal/app"
 	"github.com/opencode-ai/opencode/internal/config"
 	"github.com/opencode-ai/opencode/internal/llm/agent"
+	"github.com/opencode-ai/opencode/internal/llm/models"
 	"github.com/opencode-ai/opencode/internal/logging"
 	"github.com/opencode-ai/opencode/internal/permission"
 	"github.com/opencode-ai/opencode/internal/plugin"
@@ -205,6 +206,9 @@ type appModel struct {
 	showPluginsDialog bool
 	pluginsDialog     dialog.PluginsDialog
 
+	showConnectDialog bool
+	connectDialog     dialog.ConnectDialog
+
 	showMultiArgumentsDialog bool
 	multiArgumentsDialog     dialog.MultiArgumentsDialogCmp
 
@@ -236,6 +240,8 @@ func (a appModel) Init() tea.Cmd {
 	cmd = a.themeDialog.Init()
 	cmds = append(cmds, cmd)
 	cmd = a.pluginsDialog.Init()
+	cmds = append(cmds, cmd)
+	cmd = a.connectDialog.Init()
 	cmds = append(cmds, cmd)
 
 	// Check if we should show the init dialog
@@ -468,6 +474,22 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case dialog.ClosePluginsDialogMsg:
 		a.showPluginsDialog = false
 		return a, nil
+
+	case dialog.ShowConnectDialogMsg:
+		a.connectDialog.SetProvider(msg.Provider)
+		a.showConnectDialog = true
+		return a, a.connectDialog.Init()
+
+	case dialog.CloseConnectDialogMsg:
+		a.showConnectDialog = false
+		return a, nil
+
+	case dialog.SubmitConnectMsg:
+		a.showConnectDialog = false
+		if err := config.SetProviderAPIKey(msg.Provider, msg.APIKey); err != nil {
+			return a, util.ReportError(err)
+		}
+		return a, util.ReportInfo("Connected " + string(msg.Provider))
 
 	case dialog.ThemeChangedMsg:
 		a.pages[a.currentPage], cmd = a.pages[a.currentPage].Update(msg)
@@ -847,6 +869,15 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	if a.showConnectDialog {
+		d, connectCmd := a.connectDialog.Update(msg)
+		a.connectDialog = d.(dialog.ConnectDialog)
+		cmds = append(cmds, connectCmd)
+		if _, ok := msg.(tea.KeyMsg); ok {
+			return a, tea.Batch(cmds...)
+		}
+	}
+
 	s, _ := a.status.Update(msg)
 	a.status = s.(core.StatusCmp)
 	a.pages[a.currentPage], cmd = a.pages[a.currentPage].Update(msg)
@@ -1116,6 +1147,15 @@ func (a appModel) View() string {
 		appView = layout.PlaceOverlay(col, row, overlay, appView, true)
 	}
 
+	if a.showConnectDialog {
+		overlay := a.connectDialog.View()
+		row := lipgloss.Height(appView) / 2
+		row -= lipgloss.Height(overlay) / 2
+		col := lipgloss.Width(appView) / 2
+		col -= lipgloss.Width(overlay) / 2
+		appView = layout.PlaceOverlay(col, row, overlay, appView, true)
+	}
+
 	if a.showMultiArgumentsDialog {
 		overlay := a.multiArgumentsDialog.View()
 		row := lipgloss.Height(appView) / 2
@@ -1151,6 +1191,7 @@ func New(app *app.App) tea.Model {
 		initDialog:    dialog.NewInitDialogCmp(),
 		themeDialog:   dialog.NewThemeDialogCmp(),
 		pluginsDialog: dialog.NewPluginsDialog(),
+		connectDialog: dialog.NewConnectDialog(),
 		app:           app,
 		commands:      []dialog.Command{},
 		pages: map[page.PageID]tea.Model{
@@ -1196,6 +1237,14 @@ If there are Cursor rules (in .cursor/rules/ or .cursorrules) or Copilot rules (
 		Description: "List the loaded plugins, their hooks and tools",
 		Handler: func(cmd dialog.Command) tea.Cmd {
 			return util.CmdHandler(dialog.ShowPluginsDialogMsg{Plugins: pluginInfos()})
+		},
+	})
+	model.RegisterCommand(dialog.Command{
+		ID:          "connect",
+		Title:       "Connect Provider",
+		Description: "Store an API key for a provider (e.g. OpenCode Zen)",
+		Handler: func(cmd dialog.Command) tea.Cmd {
+			return util.CmdHandler(dialog.ShowConnectDialogMsg{Provider: models.ProviderOpencode})
 		},
 	})
 
