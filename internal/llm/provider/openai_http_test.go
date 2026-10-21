@@ -217,6 +217,49 @@ func TestOpenAIZenFreeTierInjectsFingerprint(t *testing.T) {
 	}
 }
 
+// The Zen free-tier gate rejects any request whose body sets stream:false, so a one-shot
+// SendMessages on the keyless tier must still put stream:true on the wire and aggregate the
+// stream into a single response. Regression test for the "failed to generate title" 403.
+func TestOpenAIZenFreeTierSendForcesStream(t *testing.T) {
+	srv, got, headers := newFakeOpenAIServer(t, "a title")
+
+	p, err := NewProvider(models.ProviderOpencode,
+		WithAPIKey(""),
+		WithBaseURL(srv.URL),
+		WithModel(models.Model{ID: "test", Provider: models.ProviderOpencode, APIModel: "mimo-v2.6-flash-free"}),
+		WithMaxTokens(32),
+		WithSystemMessage("s"),
+		WithOpenAIOptions(
+			WithOpenAIRequiredTools(zen.RequiredToolNames),
+			WithOpenAIRequestOptions(func() []option.RequestOption {
+				return []option.RequestOption{option.WithHeader("x-opencode-session", "ses_000000000000000000000000000000")}
+			}),
+		),
+	)
+	if err != nil {
+		t.Fatalf("NewProvider: %v", err)
+	}
+
+	msgs := []message.Message{{Role: message.User, Parts: []message.ContentPart{message.TextContent{Text: "hi"}}}}
+	resp, err := p.SendMessages(context.Background(), msgs, make([]tools.BaseTool, 0))
+	if err != nil {
+		t.Fatalf("SendMessages: %v", err)
+	}
+
+	if !got.Stream {
+		t.Error("free-tier one-shot request must set stream:true on the wire")
+	}
+	if resp.Content != "a title" {
+		t.Errorf("aggregated content = %q, want %q", resp.Content, "a title")
+	}
+	if names := got.toolNames(); len(names) != len(zen.RequiredToolNames) {
+		t.Errorf("free-tier one-shot request must advertise the four gated tools, got %v", names)
+	}
+	if headers.Get("x-opencode-session") == "" {
+		t.Error("free-tier one-shot request must carry the session fingerprint header")
+	}
+}
+
 // A keyed Zen call is a plain OpenAI request: no free-tier fingerprint.
 func TestOpenAIZenKeyedHasNoFingerprint(t *testing.T) {
 	srv, got, headers := newFakeOpenAIServer(t, "ok")

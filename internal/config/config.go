@@ -768,7 +768,7 @@ func setProviderDefaults() {
 	viper.SetDefault("agents.coder.model", models.OpencodeBigPickle)
 	viper.SetDefault("agents.summarizer.model", models.OpencodeGLM53FlashFree)
 	viper.SetDefault("agents.task.model", models.OpencodeGLM53FlashFree)
-	viper.SetDefault("agents.title.model", models.OpencodeMimoFlashFree)
+	viper.SetDefault("agents.title.model", models.OpencodeGLM53FlashFree)
 }
 
 // hasAWSCredentials checks if AWS credentials are available in the environment.

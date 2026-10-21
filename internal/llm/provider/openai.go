@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/openai/openai-go"
@@ -96,6 +97,51 @@ func debugEnabled() bool {
 	return cfg != nil && cfg.Debug
 }
 
+// freeTierFingerprint reports whether this client carries the OpenCode Zen free-tier
+// fingerprint (keyless). Such requests must be sent as streams; the gate rejects stream:false.
+func (o *openaiClient) freeTierFingerprint() bool {
+	return len(o.options.requiredTools) > 0
+}
+
+// logRequest logs the outbound request shape when debug is on. It records only presence flags
+// and the endpoint, never the API key or message contents.
+func (o *openaiClient) logRequest(op string, streaming bool) {
+	if !debugEnabled() {
+		return
+	}
+	logging.Debug("openai request",
+		"op", op,
+		"baseURL", o.options.baseURL,
+		"apiModel", o.providerOptions.model.APIModel,
+		"streaming", streaming,
+		"hasAPIKey", o.providerOptions.apiKey != "",
+		"freeTierFingerprint", len(o.options.requiredTools) > 0,
+	)
+}
+
+// logAPIError logs the HTTP status and response body of a failed request. The provider gateway
+// (OpenCode Zen included) puts its real reason in the JSON body (e.g. FreeTierError); without
+// this the TUI only shows a generic message and the cause is invisible.
+func logAPIError(op string, err error) {
+	if err == nil {
+		return
+	}
+	var apierr *openai.Error
+	if errors.As(err, &apierr) {
+		body := ""
+		if apierr.Response != nil && apierr.Response.Body != nil {
+			if b, readErr := io.ReadAll(apierr.Response.Body); readErr == nil {
+				body = string(b)
+				// Restore the body so the SDK/other readers still see it.
+				apierr.Response.Body = io.NopCloser(strings.NewReader(body))
+			}
+		}
+		logging.Error("provider request failed", "op", op, "status", apierr.StatusCode, "body", body)
+		return
+	}
+	logging.Error("provider request failed", "op", op, "error", err.Error())
+}
+
 func (o *openaiClient) convertMessages(messages []message.Message) (openaiMessages []openai.ChatCompletionMessageParamUnion) {
 	// Add system message first
 	openaiMessages = append(openaiMessages, openai.SystemMessage(o.providerOptions.systemMessage))
@@ -174,7 +220,22 @@ func (o *openaiClient) convertTools(tools []tools.BaseTool) []openai.ChatComplet
 		}
 	}
 
-	return o.injectRequiredTools(openaiTools)
+	openaiTools = o.injectRequiredTools(openaiTools)
+	toolNames := make([]string, 0, len(openaiTools))
+	for _, t := range openaiTools {
+		toolNames = append(toolNames, t.Function.Name)
+	}
+	logTools(toolNames)
+	return openaiTools
+}
+
+// logTools records the outbound tool names when debug is on. The Zen free-tier gate keys on
+// this exact set, so a missing entry explains a FreeTierError.
+func logTools(toolNames []string) {
+	if !debugEnabled() {
+		return
+	}
+	logging.Debug("openai tools", "names", strings.Join(toolNames, ","))
 }
 
 // injectRequiredTools appends empty-schema stubs for any required tool name that is not
@@ -257,6 +318,7 @@ func (o *openaiClient) preparedParams(messages []openai.ChatCompletionMessagePar
 
 func (o *openaiClient) send(ctx context.Context, messages []message.Message, tools []tools.BaseTool) (response *ProviderResponse, err error) {
 	params := o.preparedParams(o.convertMessages(messages), o.convertTools(tools))
+	o.logRequest("send", false)
 	if debugEnabled() {
 		jsonData, _ := json.Marshal(params)
 		logging.Debug("Prepared messages", "messages", string(jsonData))
@@ -264,13 +326,32 @@ func (o *openaiClient) send(ctx context.Context, messages []message.Message, too
 	attempts := 0
 	for {
 		attempts++
-		openaiResponse, err := o.client.Chat.Completions.New(
-			ctx,
-			params,
-			o.requestOptions()...,
-		)
+		// The Zen free-tier gate rejects any request whose body does not set stream:true,
+		// even though the caller asked for a one-shot response. We therefore consume the
+		// stream internally and aggregate it into a single completion.
+		var openaiResponse *openai.ChatCompletion
+		var err error
+		if o.freeTierFingerprint() {
+			var acc openai.ChatCompletionAccumulator
+			stream := o.client.Chat.Completions.NewStreaming(ctx, params, o.requestOptions()...)
+			for stream.Next() {
+				acc.AddChunk(stream.Current())
+			}
+			if streamErr := stream.Err(); streamErr != nil && !errors.Is(streamErr, io.EOF) {
+				err = streamErr
+			} else {
+				openaiResponse = &acc.ChatCompletion
+			}
+		} else {
+			openaiResponse, err = o.client.Chat.Completions.New(
+				ctx,
+				params,
+				o.requestOptions()...,
+			)
+		}
 		// If there is an error we are going to see if we can retry the call
 		if err != nil {
+			logAPIError("send", err)
 			retry, after, retryErr := o.shouldRetry(attempts, err)
 			if retryErr != nil {
 				return nil, retryErr
@@ -288,12 +369,15 @@ func (o *openaiClient) send(ctx context.Context, messages []message.Message, too
 		}
 
 		content := ""
-		if openaiResponse.Choices[0].Message.Content != "" {
-			content = openaiResponse.Choices[0].Message.Content
+		finishReason := message.FinishReasonEndTurn
+		if len(openaiResponse.Choices) > 0 {
+			if openaiResponse.Choices[0].Message.Content != "" {
+				content = openaiResponse.Choices[0].Message.Content
+			}
+			finishReason = o.finishReason(string(openaiResponse.Choices[0].FinishReason))
 		}
 
 		toolCalls := o.toolCalls(*openaiResponse)
-		finishReason := o.finishReason(string(openaiResponse.Choices[0].FinishReason))
 
 		if len(toolCalls) > 0 {
 			finishReason = message.FinishReasonToolUse
@@ -314,6 +398,7 @@ func (o *openaiClient) stream(ctx context.Context, messages []message.Message, t
 		IncludeUsage: openai.Bool(true),
 	}
 
+	o.logRequest("stream", true)
 	if debugEnabled() {
 		jsonData, _ := json.Marshal(params)
 		logging.Debug("Prepared messages", "messages", string(jsonData))
@@ -375,6 +460,7 @@ func (o *openaiClient) stream(ctx context.Context, messages []message.Message, t
 			}
 
 			// If there is an error we are going to see if we can retry the call
+			logAPIError("stream", err)
 			retry, after, retryErr := o.shouldRetry(attempts, err)
 			if retryErr != nil {
 				eventChan <- ProviderEvent{Type: EventError, Error: retryErr}

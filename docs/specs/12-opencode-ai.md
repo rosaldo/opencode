@@ -98,20 +98,26 @@ pontos de integração com a nuvem (`zen`/modelos hospedados).
   `opencode/<versão ≥ 1.18>`, `Authorization: Bearer public`, `x-opencode-session`
   (`ses_` + 12 hex + 14 base62, com o campo hex codificando o contador em `[0,63]`), `stream: true`
   e os quatro tools `bash`/`glob`/`grep`/`read` presentes no corpo — o provider injeta os tools
-  ausentes e renova a sessão por requisição; com key configurada o Zen vira uma chamada
-  OpenAI-comum **sem** o fingerprint. Catálogo curado dos modelos OpenAI-compatíveis
+  ausentes e renova a sessão por requisição. O gate **rejeita `stream: false`** (retorna
+  `403 FreeTierError`), então chamadas one-shot (`SendMessages`, usada pela geração de título)
+  também são enviadas como stream e agregadas internamente. Com key configurada o Zen vira uma
+  chamada OpenAI-comum **sem** o fingerprint. Catálogo curado dos modelos OpenAI-compatíveis
   (`/chat/completions`) do gateway (GPT‑5.x, Claude via gateway, GLM, Kimi, Qwen, DeepSeek,
   MiniMax, Grok, Mistral e os *free* atuais). Seleção por `opencode/<model-id>`
   (ex.: `opencode/gpt-5.5`), igual ao TS, resolvida por `ResolveModelID`. Usuários podem
   declarar/sobrescrever modelos em `providers.opencode.models` (Spec 06b). Comando **`/connect`**
   na TUI abre um diálogo para colar a API key (`config.SetProviderAPIKey`, persistida em
   `~/.opencode.json`). **Default amigável**: sem nenhuma credencial, o modelo cai no tier grátis
-  do Zen (`opencode/big-pickle` para o coder; GLM Flash Free/MiMo Flash Free para os agentes
-  auxiliares), e o provider `opencode` é registrado e mantido habilitado mesmo sem key. Testes:
-  `internal/llm/provider/opencode_test.go` (base URL `zen/v1`, fingerprint ligado/desligado e
-  resolução `opencode/<id>`), `internal/llm/provider/zen/fingerprint_test.go` (formato e contador
-  do session id), `internal/config/connect_test.go` (persistência da key e default grátis),
-  `internal/tui/components/dialog/connect_test.go` (diálogo).
+  do Zen (`opencode/big-pickle` para o coder; GLM Flash Free para os agentes auxiliares,
+  incluindo o título — MiMo Flash Free não segue a instrução de título). O provider `opencode`
+  é registrado e mantido habilitado mesmo sem key. Diagnóstico: com `debug` ligado, o provider
+  loga o endpoint, presença de key, fingerprint e os nomes de tool enviados (`op=send|stream`),
+  além do `status` + corpo de qualquer erro HTTP — sem a chave ou o conteúdo das mensagens.
+  Testes: `internal/llm/provider/opencode_test.go` (base URL `zen/v1`, fingerprint ligado/desligado
+  e resolução `opencode/<id>`), `internal/llm/provider/openai_http_test.go` (streaming, injeção dos
+  tools e o one-shot forçando `stream:true`), `internal/llm/provider/zen/fingerprint_test.go`
+  (formato e contador do session id), `internal/config/connect_test.go` (persistência da key e
+  default grátis), `internal/tui/components/dialog/connect_test.go` (diálogo).
 - Nota: modelos que usam endpoints não-OpenAI no Zen (`/responses`, `/messages`) não estão no
   catálogo curado enquanto o provider só fala `/chat/completions`.
 - Sem config de share, comportamento inalterado (só local) — critério 5 atendido.
