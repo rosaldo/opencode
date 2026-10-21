@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/bmatcuk/doublestar/v4"
@@ -15,25 +16,39 @@ import (
 )
 
 var (
+	rgOnce  sync.Once
+	fzfOnce sync.Once
 	rgPath  string
 	fzfPath string
 )
 
-func init() {
-	var err error
-	rgPath, err = exec.LookPath("rg")
-	if err != nil {
-		logging.Warn("Ripgrep (rg) not found in $PATH. Some features might be limited or slower.")
-		rgPath = ""
-	}
-	fzfPath, err = exec.LookPath("fzf")
-	if err != nil {
-		logging.Warn("FZF not found in $PATH. Some features might be limited or slower.")
-		fzfPath = ""
-	}
+// Resolved lazily, on first use, so that importing this package (which happens for every
+// command, including `--version`) does not emit a warning about optional tools that this
+// particular invocation may never need.
+func resolveRg() {
+	rgOnce.Do(func() {
+		path, err := exec.LookPath("rg")
+		if err != nil {
+			logging.Warn("Ripgrep (rg) not found in $PATH. Some features might be limited or slower.")
+			return
+		}
+		rgPath = path
+	})
+}
+
+func resolveFzf() {
+	fzfOnce.Do(func() {
+		path, err := exec.LookPath("fzf")
+		if err != nil {
+			logging.Warn("FZF not found in $PATH. Some features might be limited or slower.")
+			return
+		}
+		fzfPath = path
+	})
 }
 
 func GetRgCmd(globPattern string) *exec.Cmd {
+	resolveRg()
 	if rgPath == "" {
 		return nil
 	}
@@ -54,6 +69,7 @@ func GetRgCmd(globPattern string) *exec.Cmd {
 }
 
 func GetFzfCmd(query string) *exec.Cmd {
+	resolveFzf()
 	if fzfPath == "" {
 		return nil
 	}

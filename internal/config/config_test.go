@@ -23,7 +23,7 @@ func TestReadAgentConfigsParsesAgentsMap(t *testing.T) {
 	writeConfigFile(t, filepath.Join(dir, ".opencode.json"), `{
 		"agents": {
 			"security-auditor": {
-				"description": "Auditoria de segurança",
+				"description": "Security audit",
 				"mode": "subagent",
 				"model": "anthropic/claude-sonnet-4",
 				"temperature": 0.2,
@@ -63,7 +63,7 @@ func TestReadAgentConfigsDeprecatedAgentKey(t *testing.T) {
 	dir := t.TempDir()
 	writeConfigFile(t, filepath.Join(dir, ".opencode.json"), `{
 		"agent": {
-			"auditor": {"mode": "subagent", "system": "Você é um auditor."}
+			"auditor": {"mode": "subagent", "system": "You are an auditor."}
 		}
 	}`)
 
@@ -78,7 +78,7 @@ func TestReadAgentConfigsDeprecatedAgentKey(t *testing.T) {
 
 func TestJSONSourcePromptFile(t *testing.T) {
 	dir := t.TempDir()
-	writeConfigFile(t, filepath.Join(dir, "prompts", "audit.txt"), "Você é um auditor.")
+	writeConfigFile(t, filepath.Join(dir, "prompts", "audit.txt"), "You are an auditor.")
 	writeConfigFile(t, filepath.Join(dir, ".opencode.json"), `{
 		"agents": {
 			"auditor": {"mode": "subagent", "system": "{file:./prompts/audit.txt}"}
@@ -95,7 +95,7 @@ func TestJSONSourcePromptFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("prompt: %v", err)
 	}
-	if body != "Você é um auditor." {
+	if body != "You are an auditor." {
 		t.Fatalf("body = %q", body)
 	}
 }
@@ -103,7 +103,7 @@ func TestJSONSourcePromptFile(t *testing.T) {
 func TestJSONSourceInlinePrompt(t *testing.T) {
 	dir := t.TempDir()
 	writeConfigFile(t, filepath.Join(dir, ".opencode.json"), `{
-		"agents": {"greeter": {"system": "Olá!"}}
+		"agents": {"greeter": {"system": "Hello!"}}
 	}`)
 
 	agents, _ := readAgentConfigs(dir)
@@ -113,7 +113,7 @@ func TestJSONSourceInlinePrompt(t *testing.T) {
 	}
 	def, _ := reg.Get("greeter")
 	body, _ := def.Prompt()
-	if body != "Olá!" {
+	if body != "Hello!" {
 		t.Fatalf("body = %q", body)
 	}
 }

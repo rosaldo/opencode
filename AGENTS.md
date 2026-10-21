@@ -1,27 +1,27 @@
-# AGENTS.md — opencode (fork Go)
+# AGENTS.md — opencode (Go fork)
 
-## Especificações de trabalho
+## Working specifications
 
-Este repositório usa specs em `docs/specs/`. **Leia o índice antes de começar:**
+This repository uses specs under `docs/specs/`. **Read the index before starting:**
 
-- `docs/specs/00-index.md` — objetivo, decisões de arquitetura, fases, mapa de arquivos e
-  protocolo de retomada.
+- `docs/specs/00-index.md` — goal, architecture decisions, phases, file map and
+  resume protocol.
 
-Fase atual e critérios de aceite estão no índice e no spec correspondente
-(`docs/specs/01-…` a `docs/specs/13-…`; a onda 2 tem índice próprio em
+The current phase and acceptance criteria live in the index and in the matching spec
+(`docs/specs/01-…` through `docs/specs/13-…`; wave 2 has its own index at
 `docs/specs/06-12-roadmap.md`).
 
-## Regras
+## Rules
 
-- Siga a ordem das fases e as dependências indicadas em cada spec.
-- Ao concluir uma fase: `go build ./... && go test ./...` e atualize o **Status** em
-  `docs/specs/00-index.md` (só marque `Verificado` com testes passando).
-- Não altere a direção de dependências fixada no índice (novo pacote `internal/agentdef`).
-- **Fonte única de agentes**: existe **um** `agentdef.Definition` e **um** `Registry`; toda forma
-  de declarar agente (`.md` ou mapa `agents` do JSON) é uma *source* (`agentdef.Source`) que
-  produz `Definition`. **Não** criar adapters/aliases nem duplicar chaves (ver Spec 13).
-- Não adicionar teto estrutural ao número de agentes (escala ilimitada; prompt lazy).
-- Preserve as características próprias: `team`, `hidden`, `disabled`, `color`, prompt lazy,
-  delegação por nome e `@`-mention.
-- Mantenha back-compat com a config existente (`~/.opencode.json`, `<wd>/.opencode.json`);
-  `agent`/`defaultAgent` são lidos como *deprecados*, alimentando a mesma fonte única.
+- Follow the phase order and the dependencies stated in each spec.
+- When a phase is done: `go build ./... && go test ./...` and update the **Status** in
+  `docs/specs/00-index.md` (only mark `Verificado` with passing tests).
+- Do not change the dependency direction fixed in the index (new package `internal/agentdef`).
+- **Single source of agents**: there is **one** `agentdef.Definition` and **one** `Registry`; every
+  way of declaring an agent (a `.md` file or the JSON `agents` map) is a *source* (`agentdef.Source`)
+  that produces a `Definition`. Do **not** create adapters/aliases or duplicate keys (see Spec 13).
+- Do not add a structural ceiling to the number of agents (unlimited scale; lazy prompt).
+- Preserve the native features: `team`, `hidden`, `disabled`, `color`, lazy prompt,
+  delegation by name and `@`-mention.
+- Keep backward compatibility with the existing config (`~/.opencode.json`, `<wd>/.opencode.json`);
+  `agent`/`defaultAgent` are read as *deprecated*, feeding the same single source.
