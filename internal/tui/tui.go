@@ -27,15 +27,17 @@ import (
 )
 
 type keyMap struct {
-	Logs          key.Binding
-	Quit          key.Binding
-	Help          key.Binding
-	SwitchSession key.Binding
-	SwitchAgent   key.Binding
-	Commands      key.Binding
-	Filepicker    key.Binding
-	Models        key.Binding
-	SwitchTheme   key.Binding
+	Leader         key.Binding
+	Help           key.Binding
+	Logs           key.Binding
+	Quit           key.Binding
+	SwitchSession  key.Binding
+	Commands       key.Binding
+	CommandPalette key.Binding
+	SwitchAgent    key.Binding
+	Models         key.Binding
+	Filepicker     key.Binding
+	SwitchTheme    key.Binding
 }
 
 type startCompactSessionMsg struct{}
@@ -141,15 +143,16 @@ func applyKeybinds() {
 	}
 	resolvedKeybinds = kb
 	keys = keyMap{
-		Logs:          binding(KeybindLogsToggle, "logs", []string{"ctrl+l"}),
-		Quit:          binding(KeybindAppExit, "quit", []string{"ctrl+c"}),
-		Help:          binding(KeybindHelpToggle, "toggle help", []string{"ctrl+_", "ctrl+h"}),
-		SwitchSession: binding(KeybindSessionList, "switch session", []string{"ctrl+s"}),
-		SwitchAgent:   binding(KeybindAgentList, "switch agent", []string{"tab", "ctrl+a"}),
-		Commands:      binding(KeybindCommandList, "commands", []string{"ctrl+k"}),
-		Filepicker:    binding(KeybindFilePicker, "select files to upload", []string{"ctrl+f"}),
-		Models:        binding(KeybindModelList, "model selection", []string{"ctrl+o"}),
-		SwitchTheme:   binding(KeybindThemeList, "switch theme", []string{"ctrl+t"}),
+		Logs:           binding(KeybindLogsToggle, "logs", []string{"ctrl+l"}),
+		Quit:           binding(KeybindAppExit, "quit", []string{"ctrl+c"}),
+		Help:           binding(KeybindHelpToggle, "toggle help", []string{"ctrl+_", "ctrl+h"}),
+		SwitchSession:  binding(KeybindSessionList, "switch session", []string{"ctrl+s"}),
+		SwitchAgent:    binding(KeybindAgentList, "switch agent", []string{"tab", "ctrl+a"}),
+		Commands:       binding(KeybindCommandList, "commands", []string{"ctrl+k"}),
+		CommandPalette: binding(KeybindCommandPalette, "command palette", []string{"ctrl+p"}),
+		Filepicker:     binding(KeybindFilePicker, "select files to upload", []string{"ctrl+f"}),
+		Models:         binding(KeybindModelList, "model selection", []string{"ctrl+o"}),
+		SwitchTheme:    binding(KeybindThemeList, "switch theme", []string{"ctrl+t"}),
 	}
 }
 
@@ -676,6 +679,11 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return a, nil
 		case key.Matches(msg, keys.Commands):
+			if a.currentPage == page.ChatPage && !a.showQuit && !a.showPermissions && !a.showSessionDialog && !a.showThemeDialog && !a.showFilepicker {
+				return a, a.openCommandDialog("")
+			}
+			return a, nil
+		case key.Matches(msg, keys.CommandPalette):
 			if a.currentPage == page.ChatPage && !a.showQuit && !a.showPermissions && !a.showSessionDialog && !a.showThemeDialog && !a.showFilepicker {
 				return a, a.openCommandDialog("")
 			}

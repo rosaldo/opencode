@@ -105,6 +105,23 @@ Fechar lacunas da TUI: **keybinds configuráveis**, suporte a **mouse/scroll**, 
     - Parser puro `internal/tui/components/chat/slash.go` (`ParseInput`): `/cmd args` → `InputSlash`, `!sh` → `InputShell`, só no início do input; testes `slash_test.go`.
     - Editor intercepta `/` e `!` com textarea vazio: `/` emite `RunSlashCommandMsg` e abre o command dialog (filtrado por nome); `!` entra em **shell mode** (`!` no prompt, esc sai). Enter em `!cmd` executa via `sh -c`, captura saída e injeta `!cmd\n\n```console\n$ ...\n...\n```` como prompt, acionando o agente.
     - `tui.go` filtra o dialog por nome (`filterCommands`, testado). Testes: `internal/tui/commands_test.go`.
+    - **Command palette `ctrl+p`**: dialog com busca fuzzy (filtros por título/descrição/id), agrupado por contexto (built-in/custom), rodapé com keybinds, atalhos de navegação. OpenCode TS v2 usa `ctrl+p` como palette global.
+    - **Wiring completo do leader**: ligar `session_new` (`<leader>n`), `session_rename` (`<leader>r`), `session_delete` (`<leader>d`), `session_compact` (`<leader>c`), `sidebar_toggle` (`<leader>b`), `prompt_paste` (garantido) — hoje resolvidos mas não usados.
+    - **`ctrl+p` coexiste com `ctrl+k`** (commands dialog atual) durante transição; ambos abertos via keybind configurável.
+    - Mouse/teclado consistentes; respeita keybinds configuráveis.
+    - Command palette : busca fuzzy, agrupado por contexto, rodapé com keybinds.
+
+    - **Command palette ctrl+p**: dialog com busca fuzzy (filtros por título/descrição/id), agrupado por contexto (built-in/custom), rodapé com keybinds, atalhos de navegação. OpenCode TS v2 usa ctrl+p como palette global.
+    - **Wiring completo do leader**: ligar session_new (<leader>n), session_rename (<leader>r), session_delete (<leader>d), session_compact (<leader>c), sidebar_toggle (<leader>b).
+    - **ctrl+p coexiste com ctrl+k** (commands dialog atual) durante transição; ambos abertos via keybind configurável.
+    - Mouse/teclado consistentes; respeita keybinds configuráveis.
+
+  - **Command palette + leader keys (09d)** — em progresso:
+    - **Command palette ctrl+p**: dialog com busca fuzzy (filtros por título/descrição/id), agrupado por contexto (built-in/custom), rodapé com keybinds, atalhos de navegação. OpenCode TS v2 usa ctrl+p como palette global.
+    - **Wiring completo do leader**: ligar session_new (<leader>n), session_rename (<leader>r), session_delete (<leader>d), session_compact (<leader>c), sidebar_toggle (<leader>b).
+    - **ctrl+p coexiste com ctrl+k** (commands dialog atual) durante transição; ambos abertos via keybind configurável.
+    - Mouse/teclado consistentes; respeita keybinds configuráveis.
+
 - Pendências conscientes: codificação **sixel** de fato (hoje o protocolo sixel detectado usa o
   fallback half-block, que funciona em qualquer terminal truecolor) e integração de hit-test das
   demais zonas (sidebar/diálogos).

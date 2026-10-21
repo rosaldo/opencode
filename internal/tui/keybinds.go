@@ -13,6 +13,7 @@ type KeybindID string
 const (
 	KeybindAppExit        KeybindID = "app_exit"
 	KeybindCommandList    KeybindID = "command_list"
+	KeybindCommandPalette KeybindID = "command_palette"
 	KeybindAgentList      KeybindID = "agent_list"
 	KeybindSessionList    KeybindID = "session_list"
 	KeybindSessionNew     KeybindID = "session_new"
@@ -39,6 +40,7 @@ const noneValue = "none"
 var defaultKeybinds = map[KeybindID]string{
 	KeybindAppExit:        "ctrl+c",
 	KeybindCommandList:    "ctrl+k",
+	KeybindCommandPalette: "ctrl+p",
 	KeybindAgentList:      "tab",
 	KeybindSessionList:    "ctrl+s",
 	KeybindSessionNew:     "<leader>n",
