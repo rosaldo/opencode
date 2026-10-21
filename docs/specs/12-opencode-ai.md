@@ -91,20 +91,29 @@ pontos de integração com a nuvem (`zen`/modelos hospedados).
   chamadas; `opencode serve` imprime a URL do web UI. Testes: `internal/server/server_test.go`
   (`TestUIPageServed`).
 - **12d zen/modelos hospedados** — Verificado. Provider nativo **`opencode`** (`internal/llm/models/opencode.go`)
-  apontando para o gateway OpenAI-compatível `https://opencode.ai/inference/openai/v1`
+  apontando para o gateway OpenAI-compatível `https://opencode.ai/zen/v1`
   (`internal/llm/provider/provider.go`), API key via `OPENCODE_API_KEY` (ou
-  `providers.opencode.settings.apiKey`). Catálogo curado dos modelos publicados em
-  `opencode.ai/docs/zen` (GPT‑5.x, Claude via gateway, GLM, Kimi, Qwen, DeepSeek, MiniMax,
-  Grok, Mistral e os *free*). Seleção por `opencode/<model-id>` (ex.: `opencode/gpt-5.5`),
-  igual ao TS, resolvida por `ResolveModelID`. Usuários podem declarar/sobrescrever modelos
-  em `providers.opencode.models` (Spec 06b). Comando **`/connect`** na TUI abre um diálogo para
-  colar a API key (`config.SetProviderAPIKey`, persistida em `~/.opencode.json`). **Default
-  amigável**: sem nenhuma credencial, o modelo cai no tier grátis do Zen (`opencode/big-pickle`
-  para o coder; GLM Flash Free/MiMo Free para os agentes auxiliares), e o provider `opencode` é
-  registrado e mantido habilitado mesmo sem key. Testes:
-  `internal/llm/provider/opencode_test.go` (base URL do gateway e resolução `opencode/<id>`),
-  `internal/config/connect_test.go` (persistência da key e default grátis),
+  `providers.opencode.settings.apiKey`). O tier **grátis** funciona sem key, mas exige um
+  *fingerprint* de cliente (pacote novo `internal/llm/provider/zen`): `User-Agent`
+  `opencode/<versão ≥ 1.18>`, `Authorization: Bearer public`, `x-opencode-session`
+  (`ses_` + 12 hex + 14 base62, com o campo hex codificando o contador em `[0,63]`), `stream: true`
+  e os quatro tools `bash`/`glob`/`grep`/`read` presentes no corpo — o provider injeta os tools
+  ausentes e renova a sessão por requisição; com key configurada o Zen vira uma chamada
+  OpenAI-comum **sem** o fingerprint. Catálogo curado dos modelos OpenAI-compatíveis
+  (`/chat/completions`) do gateway (GPT‑5.x, Claude via gateway, GLM, Kimi, Qwen, DeepSeek,
+  MiniMax, Grok, Mistral e os *free* atuais). Seleção por `opencode/<model-id>`
+  (ex.: `opencode/gpt-5.5`), igual ao TS, resolvida por `ResolveModelID`. Usuários podem
+  declarar/sobrescrever modelos em `providers.opencode.models` (Spec 06b). Comando **`/connect`**
+  na TUI abre um diálogo para colar a API key (`config.SetProviderAPIKey`, persistida em
+  `~/.opencode.json`). **Default amigável**: sem nenhuma credencial, o modelo cai no tier grátis
+  do Zen (`opencode/big-pickle` para o coder; GLM Flash Free/MiMo Flash Free para os agentes
+  auxiliares), e o provider `opencode` é registrado e mantido habilitado mesmo sem key. Testes:
+  `internal/llm/provider/opencode_test.go` (base URL `zen/v1`, fingerprint ligado/desligado e
+  resolução `opencode/<id>`), `internal/llm/provider/zen/fingerprint_test.go` (formato e contador
+  do session id), `internal/config/connect_test.go` (persistência da key e default grátis),
   `internal/tui/components/dialog/connect_test.go` (diálogo).
+- Nota: modelos que usam endpoints não-OpenAI no Zen (`/responses`, `/messages`) não estão no
+  catálogo curado enquanto o provider só fala `/chat/completions`.
 - Sem config de share, comportamento inalterado (só local) — critério 5 atendido.
 
 ## Riscos

@@ -23,6 +23,15 @@ type openaiOptions struct {
 	disableCache    bool
 	reasoningEffort string
 	extraHeaders    map[string]string
+
+	// requestOptions returns per-request SDK options (e.g. free-tier fingerprint
+	// headers). It is called once per outgoing request so headers can carry a
+	// fresh, non-repeating value.
+	requestOptions func() []option.RequestOption
+
+	// requiredTools are tool names that must be advertised on every request,
+	// injected as stubs when the caller does not provide them (Zen free tier).
+	requiredTools []string
 }
 
 type OpenAIOption func(*openaiOptions)
@@ -158,7 +167,46 @@ func (o *openaiClient) convertTools(tools []tools.BaseTool) []openai.ChatComplet
 		}
 	}
 
+	return o.injectRequiredTools(openaiTools)
+}
+
+// injectRequiredTools appends empty-schema stubs for any required tool name that is not
+// already advertised. The Zen free-tier gate needs bash/glob/grep/read present exactly once;
+// adding a duplicate name is itself rejected, so present names are left untouched.
+func (o *openaiClient) injectRequiredTools(openaiTools []openai.ChatCompletionToolParam) []openai.ChatCompletionToolParam {
+	if len(o.options.requiredTools) == 0 {
+		return openaiTools
+	}
+
+	present := make(map[string]bool, len(openaiTools))
+	for _, t := range openaiTools {
+		present[t.Function.Name] = true
+	}
+	for _, name := range o.options.requiredTools {
+		if present[name] {
+			continue
+		}
+		openaiTools = append(openaiTools, openai.ChatCompletionToolParam{
+			Function: openai.FunctionDefinitionParam{
+				Name: name,
+				Parameters: openai.FunctionParameters{
+					"type":       "object",
+					"properties": map[string]any{},
+				},
+			},
+		})
+		present[name] = true
+	}
 	return openaiTools
+}
+
+// requestOptions returns the SDK options to attach to a single outgoing request. It is a
+// no-op unless a provider hook is configured.
+func (o *openaiClient) requestOptions() []option.RequestOption {
+	if o.options.requestOptions == nil {
+		return nil
+	}
+	return o.options.requestOptions()
 }
 
 func (o *openaiClient) finishReason(reason string) message.FinishReason {
@@ -213,6 +261,7 @@ func (o *openaiClient) send(ctx context.Context, messages []message.Message, too
 		openaiResponse, err := o.client.Chat.Completions.New(
 			ctx,
 			params,
+			o.requestOptions()...,
 		)
 		// If there is an error we are going to see if we can retry the call
 		if err != nil {
@@ -274,6 +323,7 @@ func (o *openaiClient) stream(ctx context.Context, messages []message.Message, t
 			openaiStream := o.client.Chat.Completions.NewStreaming(
 				ctx,
 				params,
+				o.requestOptions()...,
 			)
 
 			acc := openai.ChatCompletionAccumulator{}
@@ -423,6 +473,22 @@ func WithOpenAIExtraHeaders(headers map[string]string) OpenAIOption {
 func WithOpenAIDisableCache() OpenAIOption {
 	return func(options *openaiOptions) {
 		options.disableCache = true
+	}
+}
+
+// WithOpenAIRequestOptions installs a hook that supplies per-request SDK options. It is used
+// by the OpenCode Zen free tier to attach a fresh client fingerprint to every request.
+func WithOpenAIRequestOptions(fn func() []option.RequestOption) OpenAIOption {
+	return func(options *openaiOptions) {
+		options.requestOptions = fn
+	}
+}
+
+// WithOpenAIRequiredTools declares tool names that must appear on every request. Names not
+// supplied by the caller are injected as empty-schema stubs.
+func WithOpenAIRequiredTools(names []string) OpenAIOption {
+	return func(options *openaiOptions) {
+		options.requiredTools = names
 	}
 }
 

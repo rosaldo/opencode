@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/openai/openai-go/option"
 	"github.com/opencode-ai/opencode/internal/llm/models"
+	"github.com/opencode-ai/opencode/internal/llm/provider/zen"
 	"github.com/opencode-ai/opencode/internal/llm/tools"
 	"github.com/opencode-ai/opencode/internal/message"
 )
@@ -153,8 +155,33 @@ func NewProvider(providerName models.ModelProvider, opts ...ProviderClientOption
 		}, nil
 	case models.ProviderOpencode:
 		clientOptions.openaiOptions = append(clientOptions.openaiOptions,
-			WithOpenAIBaseURL("https://opencode.ai/inference/openai/v1"),
+			WithOpenAIBaseURL("https://opencode.ai/zen/v1"),
 		)
+		// The free tier is gated by a client fingerprint and only works when no
+		// API key is configured. A keyed request is a plain OpenAI-compatible
+		// call and must not carry the free-tier headers.
+		if clientOptions.apiKey == "" {
+			clientOptions.openaiOptions = append(clientOptions.openaiOptions,
+				WithOpenAIRequiredTools(zen.RequiredToolNames),
+				WithOpenAIExtraHeaders(map[string]string{
+					"User-Agent":    zen.UserAgent,
+					"Authorization": "Bearer " + zen.AuthBearerValue,
+				}),
+				WithOpenAIRequestOptions(func() []option.RequestOption {
+					// A fresh session id keeps the gate's counter within range;
+					// if generation ever fails we simply omit the header and let
+					// the request surface the gate error.
+					opts := []option.RequestOption{
+						option.WithHeader("User-Agent", zen.UserAgent),
+						option.WithHeader("Authorization", "Bearer "+zen.AuthBearerValue),
+					}
+					if sessionID, err := zen.SessionID(0); err == nil {
+						opts = append(opts, option.WithHeader("x-opencode-session", sessionID))
+					}
+					return opts
+				}),
+			)
+		}
 		return &baseProvider[OpenAIClient]{
 			options: clientOptions,
 			client:  newOpenAIClient(clientOptions),

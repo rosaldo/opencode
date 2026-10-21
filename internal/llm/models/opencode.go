@@ -1,37 +1,41 @@
 package models
 
-// ProviderOpencode is the OpenCode "Zen"/Console provider: a curated,
-// pay-as-you-go gateway exposed at https://opencode.ai/inference over an
-// OpenAI-compatible API. Model ids in the config use the "<provider>/<id>"
-// form (e.g. "opencode/gpt-5.5"), matching the TS implementation.
+// ProviderOpencode is the OpenCode "Zen" provider: a curated, pay-as-you-go
+// gateway exposed at https://opencode.ai/zen/v1 over an OpenAI-compatible API.
+// Model ids in the config use the "<provider>/<id>" form (e.g. "opencode/gpt-5.5"),
+// matching the TS implementation.
 //
-// The catalog below mirrors the OpenAI-compatible entries published at
-// https://opencode.ai/docs/zen (free models included). Because the gateway is
-// OpenAI-compatible, every entry is reachable through /chat/completions; users
-// can add or override entries under providers.opencode.models (Spec 06b).
+// The catalog below lists the OpenAI-compatible ("/chat/completions") entries
+// published by the gateway, free models included. Free models require no API key
+// but are gated by a client fingerprint implemented in internal/llm/provider/zen;
+// every entry is reachable through /chat/completions, and users can add or
+// override entries under providers.opencode.models (Spec 06b).
 const (
 	ProviderOpencode ModelProvider = "opencode"
 
-	OpencodeGPT55        ModelID = "opencode.gpt-5.5"
-	OpencodeGPT5         ModelID = "opencode.gpt-5"
-	OpencodeGPT5Mini     ModelID = "opencode.gpt-5-mini"
-	OpencodeGPT5Nano     ModelID = "opencode.gpt-5-nano"
-	OpencodeGPT54        ModelID = "opencode.gpt-5.4"
-	OpencodeGPT54Mini    ModelID = "opencode.gpt-5.4-mini"
-	OpencodeGPT54Nano    ModelID = "opencode.gpt-5.4-nano"
-	OpencodeGLM53        ModelID = "opencode.glm-5.3"
-	OpencodeGLM52        ModelID = "opencode.glm-5.2"
-	OpencodeKimiK3       ModelID = "opencode.kimi-k3"
-	OpencodeKimiK2       ModelID = "opencode.kimi-k2.6"
-	OpencodeQwen38Max    ModelID = "opencode.qwen3.8-max"
-	OpencodeDeepSeekV4   ModelID = "opencode.deepseek-v4-pro"
-	OpencodeMiniMaxM3    ModelID = "opencode.minimax-m3"
-	OpencodeMistralL4    ModelID = "opencode.mistral-large-4"
-	OpencodeGrok45       ModelID = "opencode.grok-4.5"
-	OpencodeBigPickle    ModelID = "opencode.big-pickle"
-	OpencodeGLM53FlashFr ModelID = "opencode.glm-5.3-flash-free"
-	OpencodeNemotronFree ModelID = "opencode.nemotron-3.5-lightning-free"
-	OpencodeMimoFree     ModelID = "opencode.mimo-v2.5-free"
+	OpencodeGPT55             ModelID = "opencode.gpt-5.5"
+	OpencodeGPT5              ModelID = "opencode.gpt-5"
+	OpencodeGPT5Mini          ModelID = "opencode.gpt-5-mini"
+	OpencodeGPT5Nano          ModelID = "opencode.gpt-5-nano"
+	OpencodeGPT54             ModelID = "opencode.gpt-5.4"
+	OpencodeGPT54Mini         ModelID = "opencode.gpt-5.4-mini"
+	OpencodeGPT54Nano         ModelID = "opencode.gpt-5.4-nano"
+	OpencodeGLM53             ModelID = "opencode.glm-5.3"
+	OpencodeGLM52             ModelID = "opencode.glm-5.2"
+	OpencodeKimiK3            ModelID = "opencode.kimi-k3"
+	OpencodeKimiK2            ModelID = "opencode.kimi-k2.6"
+	OpencodeQwen38Max         ModelID = "opencode.qwen3.8-max"
+	OpencodeDeepSeekV4        ModelID = "opencode.deepseek-v4-pro"
+	OpencodeMiniMaxM3         ModelID = "opencode.minimax-m3"
+	OpencodeMistralL4         ModelID = "opencode.mistral-large-4"
+	OpencodeGrok45            ModelID = "opencode.grok-4.5"
+	OpencodeBigPickle         ModelID = "opencode.big-pickle"
+	OpencodeGLM53FlashFree    ModelID = "opencode.glm-5.3-flash-free"
+	OpencodeDeepSeekFlashFree ModelID = "opencode.deepseek-v4.1-flash-free"
+	OpencodeMiniMaxM31Free    ModelID = "opencode.minimax-m3.1-flash-free"
+	OpencodeMimoFlashFree     ModelID = "opencode.mimo-v2.6-flash-free"
+	OpencodeNemotronFree      ModelID = "opencode.nemotron-3.5-lightning-free"
+	OpencodeLongcatFree       ModelID = "opencode.longcat-2.5-preview-free"
 )
 
 var OpencodeModels = map[ModelID]Model{
@@ -264,11 +268,50 @@ var OpencodeModels = map[ModelID]Model{
 		DefaultMaxTokens:    32_000,
 		SupportsAttachments: true,
 	},
-	OpencodeGLM53FlashFr: {
-		ID:                  OpencodeGLM53FlashFr,
+	OpencodeGLM53FlashFree: {
+		ID:                  OpencodeGLM53FlashFree,
 		Name:                "GLM 5.3 Flash Free (Zen)",
 		Provider:            ProviderOpencode,
 		APIModel:            "glm-5.3-flash-free",
+		CostPer1MIn:         0,
+		CostPer1MInCached:   0,
+		CostPer1MOutCached:  0,
+		CostPer1MOut:        0,
+		ContextWindow:       128_000,
+		DefaultMaxTokens:    32_000,
+		SupportsAttachments: true,
+	},
+	OpencodeDeepSeekFlashFree: {
+		ID:                  OpencodeDeepSeekFlashFree,
+		Name:                "DeepSeek V4.1 Flash Free (Zen)",
+		Provider:            ProviderOpencode,
+		APIModel:            "deepseek-v4.1-flash-free",
+		CostPer1MIn:         0,
+		CostPer1MInCached:   0,
+		CostPer1MOutCached:  0,
+		CostPer1MOut:        0,
+		ContextWindow:       128_000,
+		DefaultMaxTokens:    32_000,
+		SupportsAttachments: true,
+	},
+	OpencodeMiniMaxM31Free: {
+		ID:                  OpencodeMiniMaxM31Free,
+		Name:                "MiniMax M3.1 Flash Free (Zen)",
+		Provider:            ProviderOpencode,
+		APIModel:            "minimax-m3.1-flash-free",
+		CostPer1MIn:         0,
+		CostPer1MInCached:   0,
+		CostPer1MOutCached:  0,
+		CostPer1MOut:        0,
+		ContextWindow:       128_000,
+		DefaultMaxTokens:    32_000,
+		SupportsAttachments: true,
+	},
+	OpencodeMimoFlashFree: {
+		ID:                  OpencodeMimoFlashFree,
+		Name:                "MiMo V2.6 Flash Free (Zen)",
+		Provider:            ProviderOpencode,
+		APIModel:            "mimo-v2.6-flash-free",
 		CostPer1MIn:         0,
 		CostPer1MInCached:   0,
 		CostPer1MOutCached:  0,
@@ -290,11 +333,11 @@ var OpencodeModels = map[ModelID]Model{
 		DefaultMaxTokens:    32_000,
 		SupportsAttachments: true,
 	},
-	OpencodeMimoFree: {
-		ID:                  OpencodeMimoFree,
-		Name:                "MiMo V2.5 Free (Zen)",
+	OpencodeLongcatFree: {
+		ID:                  OpencodeLongcatFree,
+		Name:                "LongCat 2.5 Preview Free (Zen)",
 		Provider:            ProviderOpencode,
-		APIModel:            "mimo-v2.5-free",
+		APIModel:            "longcat-2.5-preview-free",
 		CostPer1MIn:         0,
 		CostPer1MInCached:   0,
 		CostPer1MOutCached:  0,

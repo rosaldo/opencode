@@ -752,23 +752,23 @@ func setProviderDefaults() {
 		viper.SetDefault("agents.coder.model", models.OpencodeGPT55)
 		viper.SetDefault("agents.summarizer.model", models.OpencodeGLM53)
 		viper.SetDefault("agents.task.model", models.OpencodeGLM53)
-		viper.SetDefault("agents.title.model", models.OpencodeGLM53FlashFr)
+		viper.SetDefault("agents.title.model", models.OpencodeGLM53FlashFree)
 		return
 	}
 	if key := viper.GetString("providers.opencode.settings.apiKey"); strings.TrimSpace(key) != "" {
 		viper.SetDefault("agents.coder.model", models.OpencodeGPT55)
 		viper.SetDefault("agents.summarizer.model", models.OpencodeGLM53)
 		viper.SetDefault("agents.task.model", models.OpencodeGLM53)
-		viper.SetDefault("agents.title.model", models.OpencodeGLM53FlashFr)
+		viper.SetDefault("agents.title.model", models.OpencodeGLM53FlashFree)
 		return
 	}
 
 	// Friendly default: nothing else is configured, so fall back to OpenCode
 	// Zen's free tier. This makes the app work out of the box with no keys.
 	viper.SetDefault("agents.coder.model", models.OpencodeBigPickle)
-	viper.SetDefault("agents.summarizer.model", models.OpencodeGLM53FlashFr)
-	viper.SetDefault("agents.task.model", models.OpencodeGLM53FlashFr)
-	viper.SetDefault("agents.title.model", models.OpencodeMimoFree)
+	viper.SetDefault("agents.summarizer.model", models.OpencodeGLM53FlashFree)
+	viper.SetDefault("agents.task.model", models.OpencodeGLM53FlashFree)
+	viper.SetDefault("agents.title.model", models.OpencodeMimoFlashFree)
 }
 
 // hasAWSCredentials checks if AWS credentials are available in the environment.
