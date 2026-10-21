@@ -41,12 +41,17 @@ type keyMap struct {
 }
 
 type startCompactSessionMsg struct{}
+type toggleSidebarMsg struct{}
 
 const (
 	quitKey = "q"
 )
 
 var keys = keyMap{
+	Leader: key.NewBinding(
+		key.WithKeys(defaultLeader),
+		key.WithHelp(defaultLeader, "leader"),
+	),
 	Logs: key.NewBinding(
 		key.WithKeys("ctrl+l"),
 		key.WithHelp("ctrl+l", "logs"),
@@ -154,6 +159,15 @@ func applyKeybinds() {
 		Models:         binding(KeybindModelList, "model selection", []string{"ctrl+o"}),
 		SwitchTheme:    binding(KeybindThemeList, "switch theme", []string{"ctrl+t"}),
 	}
+	// leader binding from resolved keybinds
+	if len(resolvedKeybinds.Keys(KeybindSessionNew)) > 0 {
+		keysList := resolvedKeybinds.Keys(KeybindSessionNew)
+		if len(keysList) > 0 {
+			keys.Leader = key.NewBinding(key.WithKeys(keysList[0]))
+		}
+	} else if resolvedKeybinds.Leader != "" {
+		keys.Leader = key.NewBinding(key.WithKeys(resolvedKeybinds.Leader))
+	}
 }
 
 var returnKey = key.NewBinding(
@@ -217,6 +231,7 @@ type appModel struct {
 
 	isCompacting      bool
 	compactingMessage string
+	leaderPending     bool
 }
 
 func (a appModel) Init() tea.Cmd {
@@ -428,6 +443,14 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case chat.RunSlashCommandMsg:
 		return a, a.openCommandDialog(msg.Name)
 
+	case toggleSidebarMsg:
+		if a.currentPage == page.ChatPage {
+			p2 := a.pages[page.ChatPage]
+			_, cmd := p2.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{}})
+			return a, cmd
+		}
+		return a, nil
+
 	case startCompactSessionMsg:
 		// Start compacting the current session
 		a.isCompacting = true
@@ -634,6 +657,56 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			args, cmd := a.multiArgumentsDialog.Update(msg)
 			a.multiArgumentsDialog = args.(dialog.MultiArgumentsDialogCmp)
 			return a, cmd
+		}
+
+		if a.currentPage == page.ChatPage && !a.showQuit && !a.showPermissions && !a.showCommandDialog && !a.showSessionDialog && !a.showModelDialog && !a.showAgentDialog && !a.showThemeDialog && !a.showFilepicker && !a.showHelp && !a.showPluginsDialog && !a.showConnectDialog {
+			if a.leaderPending {
+				a.leaderPending = false
+				switch msg.String() {
+				case "n":
+					p := a.pages[page.ChatPage]
+					cp, cmd := p.Update(chat.SessionClearedMsg{})
+					if cmd != nil {
+						return a, cmd
+					}
+					a.pages[page.ChatPage] = cp
+					if a.currentPage == page.ChatPage {
+						cp2, cmd2 := p.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{}})
+						_ = cp2
+						_ = cmd2
+					}
+					return a, util.CmdHandler(chat.SessionClearedMsg{})
+				case "b":
+					return a, util.CmdHandler(toggleSidebarMsg{})
+				case "r":
+					if a.app != nil {
+						sessions, err := a.app.Sessions.List(context.Background())
+						if err == nil && len(sessions) > 0 {
+							a.sessionDialog.SetSessions(sessions)
+							a.showSessionDialog = true
+							return a, nil
+						}
+					}
+					return a, util.ReportWarn("No sessions available")
+				case "d":
+					if a.app != nil {
+						sessions, err := a.app.Sessions.List(context.Background())
+						if err == nil && len(sessions) > 0 {
+							a.sessionDialog.SetSessions(sessions)
+							a.showSessionDialog = true
+							return a, nil
+						}
+					}
+					return a, util.ReportWarn("No sessions available")
+				case "c":
+					return a, util.CmdHandler(startCompactSessionMsg{})
+				}
+				return a, nil
+			}
+			if key.Matches(msg, keys.Leader) {
+				a.leaderPending = true
+				return a, nil
+			}
 		}
 
 		switch {
