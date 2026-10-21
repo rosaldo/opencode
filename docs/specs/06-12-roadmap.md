@@ -14,18 +14,20 @@ policies), MCP, TUI, plugins, config e integração opencode.ai**.
 > recente e a v2. As specs abaixo miram a **v2**. Um resumo das diferenças que importam está na
 > seção "Schema v2 — convenções" no fim deste arquivo.
 
-Diagnóstico (inventário no HEAD pós-fase-5, ver seção "Estado atual" de cada spec):
+Diagnóstico (inventário no HEAD pós-fase-5, ver seção "Estado atual" de cada spec).
+> **Status atual: todas as áreas abaixo estão `Verificado`.** A tabela registra o ponto de partida
+> (o que faltava antes da onda 2); o status vivo está no `00-index.md`.
 
-| Área | Estado no Go | Spec |
+| Área | Estado no HEAD pós-fase-5 (histórico) | Spec |
 |------|--------------|------|
-| Providers | PARCIAL — 11 providers hard-coded; falta `providers.<p>.models/settings/headers` e `model`/`small_model` | [06](06-providers.md) |
-| Permissions/Policies | PARCIAL — só por-agente; falta `permissions` (array de regras por recurso) e `policies` | [07](07-permissions.md) |
-| MCP | PARCIAL — stdio/sse; falta `mcp.servers` `local/remote`, HTTP/streamable, resources/prompts, OAuth, ciclo de vida | [08](08-mcp.md) |
-| TUI | PARCIAL — sem mouse, sem keybinds configuráveis, sem busca/rename/delete de sessão, sem paste | [09](09-tui.md) |
-| Plugins | AUSENTE — nenhum mecanismo de plugin/hook | [10](10-plugins.md) |
-| Config | PARCIAL — formato/localização divergentes; faltam muitas chaves v2 e o gerador de schema está desatualizado | [11](11-config.md) |
-| opencode.ai | AUSENTE — sem share, serve/web, ACP | [12](12-opencode-ai.md) |
-| Agents v2 | PARCIAL — registry/lazy OK, mas JSON em `agent` (singular) e permissions em mapa; falta a fonte única `Source`, `agents` e `permissions` array | [13](13-agents-v2.md) |
+| Providers | era PARCIAL — hoje v2 completo + provider nativo `opencode` (Zen) e `/connect` | [06](06-providers.md) |
+| Permissions/Policies | era PARCIAL — hoje `permissions` array + `policies` | [07](07-permissions.md) |
+| MCP | era PARCIAL — hoje `mcp.servers` local/remote, streamable HTTP, resources/prompts, OAuth, ciclo de vida | [08](08-mcp.md) |
+| TUI | era PARCIAL — hoje mouse, keybinds, sessões, paste, imagens, `/connect` | [09](09-tui.md) |
+| Plugins | era AUSENTE — hoje loader, hooks, custom tools, UI | [10](10-plugins.md) |
+| Config | era PARCIAL — hoje `opencode.json(c)` v2, interpolação, schema | [11](11-config.md) |
+| opencode.ai | era AUSENTE — hoje serve/share, web UI, ACP e zen | [12](12-opencode-ai.md) |
+| Agents v2 | era PARCIAL — hoje fonte única `Source`, mapa `agents`, `permissions` array | [13](13-agents-v2.md) |
 
 ## Ordem sugerida
 

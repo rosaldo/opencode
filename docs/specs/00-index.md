@@ -12,7 +12,7 @@ Base: fork Go `github.com/opencode-ai/opencode`, HEAD `73ee493` (= tag `v0.0.55`
 Hoje existem **4 agentes fixos** (`coder`, `summarizer`, `task`, `title`) — enum em
 `internal/config/config.go:39-44`.
 
-> **Onda 2** (fases 6–12, `Planejado`): paridade com o opencode TS **v2** nas áreas que não são
+> **Onda 2** (fases 6–12, `Verificado`): paridade com o opencode TS **v2** nas áreas que não são
 > agentes — providers, permissions/policies, MCP, TUI, plugins, config e integração opencode.ai.
 > Índice em [06-12-roadmap.md](06-12-roadmap.md). Alvo é a **v2** (não a 1.19.3); convenções de
 > schema v2 estão no fim do roadmap.
