@@ -89,6 +89,13 @@ func newOpenAIClient(opts providerClientOptions) OpenAIClient {
 	}
 }
 
+// debugEnabled reports whether debug logging is on, tolerating a nil config (e.g. in tests or
+// before config.Load). Reading the global unconditionally would panic on the diagnostic path.
+func debugEnabled() bool {
+	cfg := config.Get()
+	return cfg != nil && cfg.Debug
+}
+
 func (o *openaiClient) convertMessages(messages []message.Message) (openaiMessages []openai.ChatCompletionMessageParamUnion) {
 	// Add system message first
 	openaiMessages = append(openaiMessages, openai.SystemMessage(o.providerOptions.systemMessage))
@@ -250,8 +257,7 @@ func (o *openaiClient) preparedParams(messages []openai.ChatCompletionMessagePar
 
 func (o *openaiClient) send(ctx context.Context, messages []message.Message, tools []tools.BaseTool) (response *ProviderResponse, err error) {
 	params := o.preparedParams(o.convertMessages(messages), o.convertTools(tools))
-	cfg := config.Get()
-	if cfg.Debug {
+	if debugEnabled() {
 		jsonData, _ := json.Marshal(params)
 		logging.Debug("Prepared messages", "messages", string(jsonData))
 	}
@@ -308,8 +314,7 @@ func (o *openaiClient) stream(ctx context.Context, messages []message.Message, t
 		IncludeUsage: openai.Bool(true),
 	}
 
-	cfg := config.Get()
-	if cfg.Debug {
+	if debugEnabled() {
 		jsonData, _ := json.Marshal(params)
 		logging.Debug("Prepared messages", "messages", string(jsonData))
 	}

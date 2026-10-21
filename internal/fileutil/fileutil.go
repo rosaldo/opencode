@@ -1,6 +1,7 @@
 package fileutil
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -157,7 +158,9 @@ func GlobWithDoublestar(pattern, searchPath string, limit int) ([]string, bool, 
 		}
 		return nil
 	})
-	if err != nil {
+	if err != nil && !errors.Is(err, fs.SkipAll) {
+		// doublestar.GlobWalk propagates the callback's error verbatim; fs.SkipAll is how
+		// we stop early once enough candidates are collected, so it is success, not failure.
 		return nil, false, fmt.Errorf("glob walk error: %w", err)
 	}
 

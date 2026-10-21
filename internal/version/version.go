@@ -18,7 +18,7 @@ func init() {
 	// matters now that Go stamps a VCS version into local builds too (when the tree sits on a
 	// tag), which would otherwise shadow the release workflow's ldflags.
 	if Version != "unknown" && Version != "" {
-		Version = strings.TrimPrefix(Version, "v")
+		Version = normalize(Version)
 		return
 	}
 
@@ -33,10 +33,18 @@ func init() {
 		return
 	}
 	// bin built using `go install`
-	// Strip the leading `v` and any build-metadata suffix (`+dirty`, `+incompatible`, …) so the
-	// printed version is a plain `X.Y.Z`, consistent with the release binaries.
-	if idx := strings.IndexAny(mainVersion, "+"); idx >= 0 {
-		mainVersion = mainVersion[:idx]
+	Version = normalize(mainVersion)
+}
+
+// normalize turns any version string into the plain `X.Y.Z` form the release binaries print:
+// it drops a leading `v` and everything from a `+` build-metadata suffix onward (`+dirty`,
+// `+incompatible`, …). An empty input is returned unchanged.
+func normalize(v string) string {
+	if v == "" {
+		return v
 	}
-	Version = strings.TrimPrefix(mainVersion, "v")
+	if idx := strings.IndexByte(v, '+'); idx >= 0 {
+		v = v[:idx]
+	}
+	return strings.TrimPrefix(v, "v")
 }

@@ -247,6 +247,7 @@ func unmarshallParts(data []byte) ([]ContentPart, error) {
 			if err := json.Unmarshal(wrapper.Data, &part); err != nil {
 				return nil, err
 			}
+			parts = append(parts, part)
 		case binaryType:
 			part := BinaryContent{}
 			if err := json.Unmarshal(wrapper.Data, &part); err != nil {
