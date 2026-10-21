@@ -31,6 +31,8 @@ type editorCmp struct {
 	textarea    textarea.Model
 	attachments []message.Attachment
 	deleteMode  bool
+	// shellMode is true while the prompt is composing a "!cmd" shell passthrough.
+	shellMode bool
 }
 
 type EditorKeyMaps struct {
@@ -132,6 +134,18 @@ func (m *editorCmp) send() tea.Cmd {
 	}
 
 	value := m.textarea.Value()
+	// A shell passthrough ("!cmd") runs without clearing the busy guard above,
+	// but still needs a session to attach its output to.
+	parsed := ParseInput(value)
+	if parsed.Kind == InputShell {
+		m.textarea.Reset()
+		m.shellMode = false
+		if parsed.Command == "" {
+			return nil
+		}
+		return util.CmdHandler(RunShellMsg{Command: parsed.Command})
+	}
+
 	m.textarea.Reset()
 	attachments := m.attachments
 
@@ -245,9 +259,27 @@ func (m *editorCmp) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if key.Matches(msg, DeleteKeyMaps.Escape) {
 			m.deleteMode = false
+			if m.shellMode {
+				m.shellMode = false
+				return m, nil
+			}
 			return m, nil
 		}
-		// Hanlde Enter key
+		// Trigger commands at the prompt position: "/" opens the command dialog,
+		// "!" enters shell mode (Spec 09c). Only honored on an empty prompt so a
+		// slash/bang typed mid-sentence stays ordinary text.
+		if m.textarea.Focused() && m.textarea.Value() == "" && !m.deleteMode {
+			if msg.Type == tea.KeyRunes && len(msg.Runes) == 1 {
+				switch msg.Runes[0] {
+				case '/':
+					return m, util.CmdHandler(RunSlashCommandMsg{})
+				case '!':
+					m.shellMode = true
+					return m, nil
+				}
+			}
+		}
+		// Handle Enter key
 		if m.textarea.Focused() && key.Matches(msg, editorMaps.Send) {
 			value := m.textarea.Value()
 			if len(value) > 0 && value[len(value)-1] == '\\' {
@@ -274,13 +306,19 @@ func (m *editorCmp) View() string {
 		Bold(true).
 		Foreground(t.Primary())
 
+	prompt := ">"
+	if m.shellMode {
+		prompt = "!"
+		style = style.Foreground(t.Warning())
+	}
+
 	if len(m.attachments) == 0 {
-		return lipgloss.JoinHorizontal(lipgloss.Top, style.Render(">"), m.textarea.View())
+		return lipgloss.JoinHorizontal(lipgloss.Top, style.Render(prompt), m.textarea.View())
 	}
 	m.textarea.SetHeight(m.height - 1)
 	return lipgloss.JoinVertical(lipgloss.Top,
 		m.attachmentsContent(),
-		lipgloss.JoinHorizontal(lipgloss.Top, style.Render(">"),
+		lipgloss.JoinHorizontal(lipgloss.Top, style.Render(prompt),
 			m.textarea.View()),
 	)
 }

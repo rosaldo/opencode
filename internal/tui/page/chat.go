@@ -2,6 +2,8 @@ package page
 
 import (
 	"context"
+	"fmt"
+	"os/exec"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -68,6 +70,11 @@ func (p *chatPage) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		p.showCompletionDialog = false
 	case chat.SendMsg:
 		cmd := p.sendMessage(msg.Text, msg.MentionedAgent, msg.Attachments)
+		if cmd != nil {
+			return p, cmd
+		}
+	case chat.RunShellMsg:
+		cmd := p.runShell(msg.Command)
 		if cmd != nil {
 			return p, cmd
 		}
@@ -150,6 +157,23 @@ func (p *chatPage) setSidebar() tea.Cmd {
 
 func (p *chatPage) clearSidebar() tea.Cmd {
 	return p.layout.ClearRightPanel()
+}
+
+// runShell executes a "!cmd" passthrough and feeds the command and its output
+// into the conversation as a user turn, mirroring the TS TUI shell mode. It is
+// synchronous: the output is captured before the turn starts so the model sees
+// it immediately.
+func (p *chatPage) runShell(command string) tea.Cmd {
+	if strings.TrimSpace(command) == "" {
+		return nil
+	}
+	out, err := exec.Command("sh", "-c", command).CombinedOutput() //nolint:gosec
+	output := string(out)
+	if err != nil && output == "" {
+		output = err.Error()
+	}
+	prompt := fmt.Sprintf("!%s\n\n```console\n$ %s\n%s```", command, command, output)
+	return p.sendMessage(prompt, "", nil)
 }
 
 func (p *chatPage) sendMessage(text string, mentionedAgent string, attachments []message.Attachment) tea.Cmd {

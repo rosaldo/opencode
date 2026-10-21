@@ -422,6 +422,9 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.showCommandDialog = false
 		return a, nil
 
+	case chat.RunSlashCommandMsg:
+		return a, a.openCommandDialog(msg.Name)
+
 	case startCompactSessionMsg:
 		// Start compacting the current session
 		a.isCompacting = true
@@ -674,13 +677,7 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		case key.Matches(msg, keys.Commands):
 			if a.currentPage == page.ChatPage && !a.showQuit && !a.showPermissions && !a.showSessionDialog && !a.showThemeDialog && !a.showFilepicker {
-				// Show commands dialog
-				if len(a.commands) == 0 {
-					return a, util.ReportWarn("No commands available")
-				}
-				a.commandDialog.SetCommands(a.commands)
-				a.showCommandDialog = true
-				return a, nil
+				return a, a.openCommandDialog("")
 			}
 			return a, nil
 		case key.Matches(msg, keys.Models):
@@ -888,6 +885,41 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // RegisterCommand adds a command to the command dialog
 func (a *appModel) RegisterCommand(cmd dialog.Command) {
 	a.commands = append(a.commands, cmd)
+}
+
+// openCommandDialog shows the command dialog, optionally narrowed to the
+// commands whose id matches a slash name (Spec 09c). An unknown or empty name
+// shows the full list.
+func (a *appModel) openCommandDialog(name string) tea.Cmd {
+	cmds, ok := filterCommands(a.commands, name)
+	if !ok {
+		return util.ReportWarn(fmt.Sprintf("Unknown command: /%s", name))
+	}
+	if len(cmds) == 0 {
+		return util.ReportWarn("No commands available")
+	}
+	a.commandDialog.SetCommands(cmds)
+	a.showCommandDialog = true
+	return a.commandDialog.Init()
+}
+
+// filterCommands narrows commands to the one matching a slash name. An empty
+// name returns the whole list. ok is false when a name was given but nothing
+// matched (so the caller can warn about an unknown command).
+func filterCommands(commands []dialog.Command, name string) ([]dialog.Command, bool) {
+	if name == "" {
+		return commands, true
+	}
+	matched := make([]dialog.Command, 0, len(commands))
+	for _, c := range commands {
+		if strings.EqualFold(c.ID, name) {
+			matched = append(matched, c)
+		}
+	}
+	if len(matched) == 0 {
+		return nil, false
+	}
+	return matched, true
 }
 
 // pluginInfos builds the view model for the plugins dialog from the loaded

@@ -51,6 +51,20 @@ type SessionSelectedMsg = session.Session
 
 type SessionClearedMsg struct{}
 
+// RunSlashCommandMsg asks the app to open the command dialog pre-filtered by a
+// slash command name (Spec 09c). The editor emits it when the user types "/" at
+// the start of the prompt.
+type RunSlashCommandMsg struct {
+	// Name is the command name after "/", empty when only "/" was typed.
+	Name string
+}
+
+// RunShellMsg asks the app to run a shell command and add its output to the
+// conversation (Spec 09c). The editor emits it for "!cmd" input.
+type RunShellMsg struct {
+	Command string
+}
+
 type EditorFocusMsg bool
 
 func header(width int) string {
