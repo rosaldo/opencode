@@ -13,7 +13,16 @@ name: release
 on:
   push:
     tags: ["v*"]
-  workflow_dispatch: {}
+  # Manual re-run, for when the tag event was missed — e.g. the tag was pushed before this
+  # workflow existed, in which case re-pushing the same tag does NOT trigger anything again.
+  # The tag to publish must be given, because on a manual run there is no tag event to read it
+  # from (GITHUB_REF_NAME would be the branch, not "vX.Y.Z").
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. v1.0.0)"
+        required: true
+        type: string
 
 permissions:
   contents: write # create the Release and attach the assets
@@ -22,9 +31,19 @@ jobs:
   build-and-release:
     runs-on: ubuntu-latest
     steps:
+      # One place resolves the tag, for both triggers: the input on a manual run, the event's ref
+      # on a tag push. Downstream steps read $TAG, never GITHUB_REF_NAME directly.
+      - name: Resolve tag
+        id: tag
+        run: |
+          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          [[ "$tag" =~ ^v[0-9] ]] || { echo "::error::not a version tag: '$tag'"; exit 1; }
+          echo "name=$tag" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0 # the tag's annotation becomes the release notes
+          ref: ${{ steps.tag.outputs.name }}
 
       - uses: actions/setup-go@v5
         with:
@@ -47,7 +66,7 @@ jobs:
       - name: Build
         run: |
           set -euo pipefail
-          tag="${GITHUB_REF_NAME}"
+          tag="${{ steps.tag.outputs.name }}"
           mkdir -p dist
           for target in windows/amd64 linux/amd64 linux/arm64 darwin/arm64; do
             os="${target%/*}"; arch="${target#*/}"
@@ -67,7 +86,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          tag="${GITHUB_REF_NAME}"
+          tag="${{ steps.tag.outputs.name }}"
           notes="$(git tag -l "$tag" --format='%(contents)')"
           # `--latest` is explicit on both paths. Left to GitHub it is decided by DATE, which is
           # wrong whenever two releases go out close together — the label can land on the LOWER

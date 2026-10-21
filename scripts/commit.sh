@@ -77,9 +77,16 @@ esac
 gate
 
 NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+COMMIT_MSG="${PREFIX}(v${NEW_VERSION}): ${MSG}"
+
+# Stage EVERYTHING (the release tree), then write the bumped version on top of it.
+#
+# `git add -A` first is what makes this the one place a version is closed: the work in progress
+# is included without the author having to remember a separate `git add` beforehand. The VERSION
+# file is written and staged after, so the bump always wins over whatever the author had there.
+git -C "$REPO_DIR" add -A
 echo "$NEW_VERSION" > "$VERSION_FILE"
 git -C "$REPO_DIR" add "$VERSION_FILE"
-COMMIT_MSG="${PREFIX}(v${NEW_VERSION}): ${MSG}"
 
 git -C "$REPO_DIR" commit -m "$COMMIT_MSG"
 
