@@ -2,6 +2,7 @@
 
 > Generated from `git` by `scripts/gen-changelog.sh` — do not edit by hand.
 
+- **v1.4.0** (2026-10-21) · `feat` — tui: fuzzy / search in the command dialog and configurable prompt_paste keybind (09d)
 - **v1.3.0** (2026-10-21) · `feat` — tui: render collapsible thinking blocks (09e) and make leader key sequences config-driven (09d)
 - **v1.2.0** (2026-10-21) · `feat` — tui: wire leader key sequences (session_new/rename/delete/compact/sidebar)
 - **v1.1.0** (2026-10-21) · `feat` — tui: add ctrl+p command palette keybind, coexists with ctrl+k

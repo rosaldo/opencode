@@ -121,6 +121,11 @@ Fechar lacunas da TUI: **keybinds configuráveis**, suporte a **mouse/scroll**, 
       `session_compact` → `startCompactSessionMsg`.
     - Só ativa no ChatPage com nenhum diálogo aberto (`inChatContext`); qualquer outra tecla cancela
       o prefixo (`ctrl+c` é repassado ao handler de saída).
+    - **Busca fuzzy no command dialog**: modo `search` ativado por `/` (mesmo modelo do diálogo de
+      sessão), `fuzzy.RankFindFold` sobre `title + description` ordenado por Levenshtein, `esc`/`enter`
+      saem preservando a lista filtrada e `SetCommands` reseta modo/query ao reabrir. `dialog/commands_test.go`.
+    - **`prompt_paste` ligado**: `chat.SetPromptPasteKeybind` recebe
+      `resolvedKeybinds.Keys(KeybindPromptPaste)` em `applyKeybinds`; `ctrl+v` vira configurável.
     - Testes: `internal/tui/keybinds_test.go` (defaults `<leader>`, override, `none`,
       `applyLeaderBindings` defaults e reconfigurado).
   - **Blocos thinking/reasoning (09e)** — feito:

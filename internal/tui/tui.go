@@ -164,6 +164,8 @@ func applyKeybinds() {
 		keys.Leader = key.NewBinding(key.WithKeys(leader), key.WithHelp(leader, "leader"))
 	}
 	applyLeaderBindings()
+	// The editor owns the paste key and cannot see the package keymap.
+	chat.SetPromptPasteKeybind(resolvedKeybinds.Keys(KeybindPromptPaste))
 }
 
 // leaderAction is a TUI action addressable through the <leader> sequence

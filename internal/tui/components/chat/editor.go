@@ -86,6 +86,18 @@ const (
 	maxAttachments = 5
 )
 
+// SetPromptPasteKeybind replaces the paste binding so the key comes from
+// `tui.keybinds.prompt_paste` instead of the hardcoded ctrl+v (Spec 09d).
+func SetPromptPasteKeybind(bound []string) {
+	if len(bound) == 0 {
+		return
+	}
+	editorMaps.Paste = key.NewBinding(
+		key.WithKeys(bound...),
+		key.WithHelp(bound[0], "paste image"),
+	)
+}
+
 func (m *editorCmp) openEditor() tea.Cmd {
 	editor := os.Getenv("EDITOR")
 	if editor == "" {
