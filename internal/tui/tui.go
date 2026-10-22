@@ -54,6 +54,19 @@ type (
 	showHelpMsg        struct{}
 	showQuitMsg        struct{}
 	showTimelineMsg    struct{}
+	showForkMsg        struct{}
+)
+
+// forkCompletedMsg / forkFailedMsg carry the async outcome of a fork request
+// back into the model (Spec 09p).
+type (
+	forkCompletedMsg struct {
+		session session.Session
+		prompt  string
+	}
+	forkFailedMsg struct {
+		err error
+	}
 )
 
 // leaderTimeoutMsg fires when the leader sequence was not completed in time
@@ -214,6 +227,7 @@ const (
 	leaderToggleDetails
 	leaderTimeline
 	leaderCopySession
+	leaderForkSession
 )
 
 // leaderSuffixes maps the keystroke pressed after the leader to its action;
@@ -249,6 +263,7 @@ func applyLeaderBindings() {
 		{leaderToggleDetails, KeybindToolDetails},
 		{leaderTimeline, KeybindSessionTimeline},
 		{leaderCopySession, KeybindSessionCopy},
+		{leaderForkSession, KeybindSessionFork},
 	}
 	leaderSuffixes = make(map[string]leaderAction, len(pairs))
 	leaderDirect = make(map[leaderAction]key.Binding, len(pairs))
@@ -331,6 +346,7 @@ var leaderHints = map[leaderAction]string{
 	leaderToggleDetails:  "toggle details",
 	leaderTimeline:       "jump to message",
 	leaderCopySession:    "copy transcript",
+	leaderForkSession:    "fork session",
 }
 
 // leaderHintRows lists "suffix  label" pairs sorted by suffix: the which-key
@@ -360,7 +376,7 @@ func (a appModel) inChatContext() bool {
 		!a.showSessionDialog && !a.showModelDialog && !a.showAgentDialog &&
 		!a.showThemeDialog && !a.showTimelineDialog && !a.showFilepicker &&
 		!a.showHelp && !a.showPluginsDialog && !a.showConnectDialog &&
-		!a.showMultiArgumentsDialog
+		!a.showMultiArgumentsDialog && !a.showForkDialog
 }
 
 // runLeaderAction executes one leader action (Spec 09d).
@@ -394,6 +410,8 @@ func (a appModel) runLeaderAction(action leaderAction) (appModel, tea.Cmd) {
 		return a.openTimelineDialog()
 	case leaderCopySession:
 		return a.copySession()
+	case leaderForkSession:
+		return a.openForkDialog()
 	}
 	return a, nil
 }
@@ -424,6 +442,11 @@ func (a *appModel) forwardMouseClick(msg tea.MouseMsg) tea.Cmd {
 	if a.showTimelineDialog {
 		d, cmd := a.timelineDialog.Update(msg)
 		a.timelineDialog = d.(dialog.TimelineDialog)
+		return cmd
+	}
+	if a.showForkDialog {
+		d, cmd := a.forkDialog.Update(msg)
+		a.forkDialog = d.(dialog.ForkDialog)
 		return cmd
 	}
 	var cmd tea.Cmd
@@ -492,6 +515,57 @@ func (a appModel) openTimelineDialog() (appModel, tea.Cmd) {
 	return a, a.timelineDialog.Init()
 }
 
+// openForkDialog loads the current session messages and shows the fork picker
+// (/fork, Spec 09p). The first row forks the full session; the remaining rows
+// fork up to (excluding) the chosen user message.
+func (a appModel) openForkDialog() (appModel, tea.Cmd) {
+	if a.app == nil || a.selectedSession.ID == "" {
+		return a, util.ReportWarn("No active session")
+	}
+	if a.showQuit || a.showPermissions || a.showSessionDialog || a.showCommandDialog {
+		return a, nil
+	}
+	msgs, err := a.app.Messages.List(context.Background(), a.selectedSession.ID)
+	if err != nil {
+		return a, util.ReportError(err)
+	}
+	if len(msgs) == 0 {
+		return a, util.ReportWarn("Session has no messages to fork")
+	}
+	a.forkDialog.SetItems(dialog.ForkItems(msgs))
+	a.showForkDialog = true
+	return a, a.forkDialog.Init()
+}
+
+// forkSession copies the current session up to (excluding) before into a new
+// session and reports the result asynchronously (Spec 09p). The prompt text of
+// the boundary message rides along so the composer can be prefilled with it.
+func (a appModel) forkSession(before string) tea.Cmd {
+	app := a.app
+	parentID := a.selectedSession.ID
+	return func() tea.Msg {
+		ctx := context.Background()
+		var prompt string
+		if before != "" {
+			msgs, err := app.Messages.List(ctx, parentID)
+			if err != nil {
+				return forkFailedMsg{err: err}
+			}
+			for _, m := range msgs {
+				if m.ID == before {
+					prompt = strings.TrimSpace(m.Content().Text)
+					break
+				}
+			}
+		}
+		forked, err := app.Sessions.Fork(ctx, parentID, before)
+		if err != nil {
+			return forkFailedMsg{err: err}
+		}
+		return forkCompletedMsg{session: forked, prompt: prompt}
+	}
+}
+
 // openHelp shows the help dialog (/help, Spec 09h).
 func (a appModel) openHelp() (appModel, tea.Cmd) {
 	a.showHelp = true
@@ -508,6 +582,7 @@ func (a appModel) toggleQuit() (appModel, tea.Cmd) {
 	a.showModelDialog = false
 	a.showAgentDialog = false
 	a.showTimelineDialog = false
+	a.showForkDialog = false
 	a.showMultiArgumentsDialog = false
 	if a.showFilepicker {
 		a.showFilepicker = false
@@ -597,6 +672,9 @@ type appModel struct {
 
 	showTimelineDialog bool
 	timelineDialog     dialog.TimelineDialog
+
+	showForkDialog bool
+	forkDialog     dialog.ForkDialog
 
 	showConnectDialog bool
 	connectDialog     dialog.ConnectDialog
@@ -747,6 +825,11 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.timelineDialog = d.(dialog.TimelineDialog)
 			return a, cmd
 		}
+		if a.showForkDialog {
+			d, cmd := a.forkDialog.Update(keyMsg)
+			a.forkDialog = d.(dialog.ForkDialog)
+			return a, cmd
+		}
 		a.pages[a.currentPage], cmd = a.pages[a.currentPage].Update(keyMsg)
 		return a, cmd
 	// Status
@@ -869,6 +952,11 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.timelineDialog = d.(dialog.TimelineDialog)
 			return a, cmd
 		}
+		if a.showForkDialog {
+			d, cmd := a.forkDialog.Update(msg)
+			a.forkDialog = d.(dialog.ForkDialog)
+			return a, cmd
+		}
 		return a, nil
 
 	case chat.ShowSessionListMsg:
@@ -888,6 +976,34 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.toggleQuit()
 	case showTimelineMsg:
 		return a.openTimelineDialog()
+	case showForkMsg:
+		return a.openForkDialog()
+
+	case dialog.CloseForkDialogMsg:
+		a.showForkDialog = false
+		return a, nil
+	case dialog.ForkMsg:
+		// Run the fork off-model; the dialog shows a pending state until the
+		// outcome arrives (Spec 09p).
+		if a.app == nil || a.selectedSession.ID == "" {
+			a.showForkDialog = false
+			return a, util.ReportWarn("No active session")
+		}
+		a.forkDialog.SetPending(true)
+		return a, a.forkSession(msg.MessageID)
+	case forkCompletedMsg:
+		a.showForkDialog = false
+		cmds := []tea.Cmd{
+			util.CmdHandler(chat.SessionSelectedMsg(msg.session)),
+			util.ReportInfo("Forked session"),
+		}
+		if msg.prompt != "" {
+			cmds = append(cmds, util.CmdHandler(chat.RestorePromptMsg{Text: msg.prompt}))
+		}
+		return a, tea.Batch(cmds...)
+	case forkFailedMsg:
+		a.showForkDialog = false
+		return a, util.ReportError(msg.err)
 
 	case dialog.CloseTimelineDialogMsg:
 		a.showTimelineDialog = false
@@ -1329,6 +1445,16 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	if a.showForkDialog {
+		d, forkCmd := a.forkDialog.Update(msg)
+		a.forkDialog = d.(dialog.ForkDialog)
+		cmds = append(cmds, forkCmd)
+		// Only block key messages send all other messages down
+		if _, ok := msg.(tea.KeyMsg); ok {
+			return a, tea.Batch(cmds...)
+		}
+	}
+
 	if a.showPluginsDialog {
 		d, pluginsCmd := a.pluginsDialog.Update(msg)
 		a.pluginsDialog = d.(dialog.PluginsDialog)
@@ -1684,6 +1810,21 @@ func (a appModel) View() string {
 		)
 	}
 
+	if a.showForkDialog {
+		overlay := a.forkDialog.View()
+		row := lipgloss.Height(appView) / 2
+		row -= lipgloss.Height(overlay) / 2
+		col := lipgloss.Width(appView) / 2
+		col -= lipgloss.Width(overlay) / 2
+		appView = layout.PlaceOverlay(
+			col,
+			row,
+			overlay,
+			appView,
+			true,
+		)
+	}
+
 	if a.showInitDialog {
 		overlay := a.initDialog.View()
 		appView = layout.PlaceOverlay(
@@ -1763,6 +1904,7 @@ func New(app *app.App) tea.Model {
 		initDialog:     dialog.NewInitDialogCmp(),
 		themeDialog:    dialog.NewThemeDialogCmp(),
 		timelineDialog: dialog.NewTimelineDialogCmp(),
+		forkDialog:     dialog.NewForkDialogCmp(),
 		pluginsDialog:  dialog.NewPluginsDialog(),
 		connectDialog:  dialog.NewConnectDialog(),
 		app:            app,
@@ -1828,6 +1970,15 @@ If there are Cursor rules (in .cursor/rules/ or .cursorrules) or Copilot rules (
 		Description: "Copy the whole conversation as Markdown to the clipboard",
 		Handler: func(cmd dialog.Command) tea.Cmd {
 			return util.CmdHandler(copySessionMsg{})
+		},
+	})
+
+	model.RegisterCommand(dialog.Command{
+		ID:          "fork",
+		Title:       "Fork Session",
+		Description: "Copy this session (or up to a message) into a new one",
+		Handler: func(cmd dialog.Command) tea.Cmd {
+			return util.CmdHandler(showForkMsg{})
 		},
 	})
 

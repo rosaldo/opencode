@@ -39,3 +39,18 @@ WHERE id = ?;
 -- name: DeleteSessionMessages :exec
 DELETE FROM messages
 WHERE session_id = ?;
+
+-- name: CopyMessage :one
+INSERT INTO messages (
+    id,
+    session_id,
+    role,
+    parts,
+    model,
+    created_at,
+    updated_at,
+    finished_at
+) VALUES (
+    ?, ?, ?, ?, ?, ?, ?, ?
+)
+RETURNING *;

@@ -78,3 +78,32 @@ func TestLeaderTimeoutFromConfig(t *testing.T) {
 		t.Errorf("defaultLeaderTimeout = %v, want 2s (tui.json parity)", defaultLeaderTimeout)
 	}
 }
+
+func TestLeaderSuffixesIncludeForkWhenBound(t *testing.T) {
+	restore := resolvedKeybinds
+	defer func() {
+		resolvedKeybinds = restore
+		applyLeaderBindings()
+	}()
+
+	kb, warnings := ResolveKeybinds(map[string]string{"session_fork": "<leader>f"})
+	if len(warnings) != 0 {
+		t.Fatalf("unexpected warnings: %v", warnings)
+	}
+	resolvedKeybinds = kb
+	applyLeaderBindings()
+
+	rows := leaderHintRows()
+	found := false
+	for _, row := range rows {
+		if strings.HasPrefix(row, "f ") && strings.Contains(row, "fork session") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("rows = %q, want the fork suffix when session_fork is bound", rows)
+	}
+	if action, ok := leaderSuffixes["f"]; !ok || action != leaderForkSession {
+		t.Errorf("leaderSuffixes[f] = %v,%v, want leaderForkSession", action, ok)
+	}
+}

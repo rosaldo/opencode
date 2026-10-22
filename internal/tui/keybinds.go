@@ -30,6 +30,7 @@ const (
 	KeybindSessionExport   KeybindID = "session_export"
 	KeybindSessionCopy     KeybindID = "session_copy"
 	KeybindSessionTimeline KeybindID = "session_timeline"
+	KeybindSessionFork     KeybindID = "session_fork"
 	KeybindHistoryPrev     KeybindID = "history_previous"
 	KeybindHistoryNext     KeybindID = "history_next"
 	KeybindDisplayThink    KeybindID = "display_thinking"
@@ -70,8 +71,10 @@ var defaultKeybinds = map[KeybindID]string{
 	// jumps to a user message with <leader>g.
 	KeybindSessionCopy:     noneValue,
 	KeybindSessionTimeline: "<leader>g",
-	KeybindHistoryPrev:     "up",
-	KeybindHistoryNext:     "down",
+	// Like the TS default: session_fork is slash-only (/fork).
+	KeybindSessionFork: noneValue,
+	KeybindHistoryPrev: "up",
+	KeybindHistoryNext: "down",
 	// Like the TS default: /thinking is the discoverable way to toggle it.
 	KeybindDisplayThink: noneValue,
 	KeybindMessagesCopy: "<leader>y",

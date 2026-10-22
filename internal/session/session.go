@@ -3,11 +3,18 @@ package session
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/opencode-ai/opencode/internal/db"
+	"github.com/opencode-ai/opencode/internal/message"
 	"github.com/opencode-ai/opencode/internal/pubsub"
 )
+
+// ErrSessionEmpty is returned by Fork when nothing would be copied: the session
+// has no messages, or the boundary message is the first one (Spec 09p).
+var ErrSessionEmpty = errors.New("session has no messages to fork")
 
 type Session struct {
 	ID               string
@@ -31,6 +38,10 @@ type Service interface {
 	List(ctx context.Context) ([]Session, error)
 	Save(ctx context.Context, session Session) (Session, error)
 	Delete(ctx context.Context, id string) error
+	// Fork copies the messages of sessionID that come strictly before the
+	// message identified by before into a new session; an empty before copies
+	// the whole session (Spec 09p).
+	Fork(ctx context.Context, sessionID string, before string) (Session, error)
 }
 
 type service struct {
@@ -90,6 +101,87 @@ func (s *service) Delete(ctx context.Context, id string) error {
 	}
 	s.Publish(pubsub.DeletedEvent, session)
 	return nil
+}
+
+// Fork creates a new session holding a copy of the messages of sessionID that
+// come strictly before the message identified by before (Spec 09p). An empty
+// before copies the whole session. Assistant messages still in flight (no
+// Finish yet) are skipped, the copy keeps the original timestamps, and the
+// origin is recorded in fork_session_id — not parent_session_id — so the fork
+// keeps showing up in List.
+func (s *service) Fork(ctx context.Context, sessionID string, before string) (Session, error) {
+	parent, err := s.Get(ctx, sessionID)
+	if err != nil {
+		return Session{}, err
+	}
+	parentMsgs, err := s.q.ListMessagesBySession(ctx, sessionID)
+	if err != nil {
+		return Session{}, err
+	}
+	limit := len(parentMsgs)
+	if before != "" {
+		limit = -1
+		for i, m := range parentMsgs {
+			if m.ID == before {
+				limit = i
+				break
+			}
+		}
+		if limit < 0 {
+			return Session{}, fmt.Errorf("message %s not found in session %s", before, sessionID)
+		}
+	}
+
+	copied := make([]db.Message, 0, limit)
+	for _, m := range parentMsgs[:limit] {
+		if messageSettled(m) {
+			copied = append(copied, m)
+		}
+	}
+	if len(copied) == 0 {
+		return Session{}, ErrSessionEmpty
+	}
+
+	forkN, err := s.q.CountSessionForks(ctx, sql.NullString{String: sessionID, Valid: true})
+	if err != nil {
+		return Session{}, err
+	}
+	dbSession, err := s.q.CreateForkSession(ctx, db.CreateForkSessionParams{
+		ID:            uuid.New().String(),
+		ForkSessionID: sql.NullString{String: sessionID, Valid: true},
+		Title:         fmt.Sprintf("%s (fork #%d)", parent.Title, forkN+1),
+	})
+	if err != nil {
+		return Session{}, err
+	}
+	for _, m := range copied {
+		if _, err := s.q.CopyMessage(ctx, db.CopyMessageParams{
+			ID:         uuid.New().String(),
+			SessionID:  dbSession.ID,
+			Role:       m.Role,
+			Parts:      m.Parts,
+			Model:      m.Model,
+			CreatedAt:  m.CreatedAt,
+			UpdatedAt:  m.UpdatedAt,
+			FinishedAt: m.FinishedAt,
+		}); err != nil {
+			// A partial transcript must not survive (Spec 09p).
+			if delErr := s.q.DeleteSession(ctx, dbSession.ID); delErr != nil {
+				return Session{}, errors.Join(err, delErr)
+			}
+			return Session{}, err
+		}
+	}
+	session := s.fromDBItem(dbSession)
+	s.Publish(pubsub.CreatedEvent, session)
+	return session, nil
+}
+
+// messageSettled reports whether a stored row is complete: non-assistant rows
+// are created with their Finish part already appended, and an assistant row
+// only gets finished_at once its Finish was persisted by Update (Spec 09p).
+func messageSettled(m db.Message) bool {
+	return m.Role != string(message.Assistant) || m.FinishedAt.Valid
 }
 
 func (s *service) Get(ctx context.Context, id string) (Session, error) {

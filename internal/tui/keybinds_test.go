@@ -40,6 +40,10 @@ func TestResolveKeybindsDefaults(t *testing.T) {
 	if kb.Enabled(KeybindSessionCopy) {
 		t.Error("session_copy default must be disabled")
 	}
+	// session_fork is slash-only (/fork), like the TS default (Spec 09p).
+	if kb.Enabled(KeybindSessionFork) {
+		t.Error("session_fork default must be disabled")
+	}
 }
 
 func TestResolveKeybindsOverride(t *testing.T) {

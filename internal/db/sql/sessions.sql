@@ -49,3 +49,25 @@ RETURNING *;
 -- name: DeleteSession :exec
 DELETE FROM sessions
 WHERE id = ?;
+
+-- name: CreateForkSession :one
+INSERT INTO sessions (
+    id,
+    parent_session_id,
+    fork_session_id,
+    title,
+    message_count,
+    prompt_tokens,
+    completion_tokens,
+    cost,
+    summary_message_id,
+    updated_at,
+    created_at
+) VALUES (
+    ?, null, ?, ?, 0, 0, 0, 0.0, null,
+    strftime('%s', 'now'),
+    strftime('%s', 'now')
+) RETURNING *;
+
+-- name: CountSessionForks :one
+SELECT COUNT(*) FROM sessions WHERE fork_session_id = ?;

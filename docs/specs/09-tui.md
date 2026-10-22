@@ -268,14 +268,47 @@ Fechar lacunas da TUI: **keybinds configuráveis**, suporte a **mouse/scroll**, 
     - Testes: `timeline_test.go` (itens user/newest-first, Enter/Esc, ListActivatedMsg,
       busca, preview), `list_test.go` (`TestJumpToMessage`), `leader_test.go`/
       `keybinds_test.go` (sufixo `g`, `session_copy` desabilitado).
+  - **Session fork (09p)** — feito:
+    - `session.Service.Fork(ctx, sessionID, before)`: cria uma sessão nova com cópia das
+      mensagens **estrictamente antes** de `before` (`before == ""` → transcrição completa),
+      remapeando ids (UUIDs novos) e preservando papel/parts/model/`created_at`/`updated_at`/
+      `finished_at`. Mensagens in-flight (assistant sem `finished_at` — o `Finish` só grava a
+      coluna no `Update`) não são copiadas. Fronteira desconhecida → erro; nada a copiar →
+      `ErrSessionEmpty` (a sessão só é criada depois do corte e um erro no meio do copy a
+      apaga via cascade — sem linha parcial). Título `"<título> (fork #N)"`, com N vindo de
+      `CountSessionForks` (primeiro fork = 1).
+    - Origem gravada em `fork_session_id` (**não** `parent_session_id`) via migration
+      `20261022000000_add_fork_session_id.sql` + query `CreateForkSession`: assim o fork
+      continua aparecendo no switcher (`ListSessions` filtra `parent_session_id IS NULL`) e
+      as task sessions continuam ocultas. O `message_count` do fork é mantido pelo trigger
+      de INSERT existente. sqlc regenerado (v1.31.1, só muda o comentário de versão).
+    - TUI: `/fork` ("Fork Session") → `showForkMsg` → `openForkDialog` → diálogo
+      `dialog/fork.go`: linha **"Full session"** primeiro (sem timestamp) + mensagens de
+      usuário mais recentes primeiro (reusa o `TimelineItem` do 09o), busca fuzzy `/`,
+      Enter/clique → `ForkMsg` (`MessageID` vazio = sessão completa). Enquanto o `Fork`
+      assíncrono roda o diálogo mostra "Forking session…" e engole teclas/cliques
+      (`SetPending`; `SetItems` limpa o estado ao reabrir). Sucesso → troca de sessão
+      (`chat.SessionSelectedMsg`), toast "Forked session" e prefill do prompt com o texto da
+      mensagem de fronteira (`chat.RestorePromptMsg`, só se o draft estiver vazio); falha →
+      toast de erro e fecha. Guards: sem app/sessão ativa, sessão sem mensagens.
+    - Keybind `session_fork` (default `none`, igual ao TS — `/fork` é a forma descobrível);
+      quando configurado com `<leader>x` vira sufixo do which-key ("fork session") pela rota
+      `leaderForkSession`.
+    - `TimelineItem.Render` omite a hora quando `CreatedAt` é zero (linha "Full session").
+    - Testes: `session_fork_test.go` (SQLite real com migrations: corte completo/por
+      fronteira, in-flight excluído, ids remapeados, ordem e timestamps preservados,
+      `fork_session_id`, contador via trigger, `ErrSessionEmpty` sem linha órfã, fronteira
+      desconhecida, numeração `#1/#2`, evento `CreatedEvent`), `fork_test.go` (itens,
+      Enter completo/por mensagem, Esc, clique, pending, busca, render sem timestamp),
+      `keybinds_test.go`/`leader_test.go` (default desabilitado, sufixo `f` quando
+      configurado).
 
 - Pendências conscientes: codificação **sixel** de fato (hoje o protocolo sixel detectado usa o
   fallback half-block, que funciona em qualquer terminal truecolor); cliques de mouse nos
-  diálogos de agents/plugins ainda sem hit-test (Spec 09n); `session_fork` (`/fork`,
-  `session_fork`) ainda sem ação — o service Go não tem `Fork` (copiar histórico com boundary
-  antes de uma mensagem) e é a próxima etapa (09p); o diálogo de timeline do TS também abre um
-  "Message Actions" (Jump to / Revert / Copy / Fork) na seleção — aqui Enter pula direto até
-  que Revert/Fork existam; keybinds `session_move`/`prompt_stash*` ainda sem ação; agrupamento
+  diálogos de agents/plugins ainda sem hit-test (Spec 09n); o diálogo de timeline do TS também
+  abre um "Message Actions" (Jump to / Revert / Copy / Fork) na seleção — aqui Enter pula
+  direto até que Revert exista (Fork já existe via `/fork`/`session_fork`); keybinds
+  `session_move`/`prompt_stash*` ainda sem ação; agrupamento
   do palette por contexto; `/undo`/`/redo` **não** fazem rollback de arquivos via git como no TS
   nem reexecutam o agent (decisão consciente de escopo, Spec 09k).
 

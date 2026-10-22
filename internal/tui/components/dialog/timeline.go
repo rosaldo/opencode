@@ -52,10 +52,15 @@ func (i TimelineItem) Render(selected bool, width int) string {
 	if lipgloss.Width(title) > width-4 {
 		title = strings.TrimSpace(title[:max(0, width-7)]) + "..."
 	}
+	// The "Full session" row of the fork dialog carries no timestamp (Spec 09p).
+	foot := ""
+	if !i.CreatedAt.IsZero() {
+		foot = i.CreatedAt.Format("15:04:05")
+	}
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
 		itemStyle.Padding(0, 1).Render(title),
-		descStyle.Padding(0, 1).Render(i.CreatedAt.Format("15:04:05")),
+		descStyle.Padding(0, 1).Render(foot),
 	)
 }
 
