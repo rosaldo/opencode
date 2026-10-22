@@ -62,6 +62,12 @@ type CopyMessageMsg struct{}
 // the /details command).
 type ToggleDetailsMsg struct{}
 
+// JumpToMessageMsg scrolls the transcript to the given message and marks it as
+// the current one (Spec 09o: the timeline dialog).
+type JumpToMessageMsg struct {
+	MessageID string
+}
+
 type MessageKeys struct {
 	PageDown     key.Binding
 	PageUp       key.Binding
@@ -136,6 +142,13 @@ func (m *messagesCmp) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd := m.SetSession(msg)
 			return m, cmd
 		}
+		return m, nil
+	case JumpToMessageMsg:
+		// The timeline dialog previews (moving selection) and jumps (Enter)
+		// to a user message (Spec 09o).
+		m.currentMsgID = msg.MessageID
+		m.scrollToMessage(msg.MessageID)
+		m.renderView()
 		return m, nil
 	case SessionClearedMsg:
 		m.session = session.Session{}

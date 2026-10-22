@@ -1,8 +1,10 @@
 package chat
 
 import (
+	"strings"
 	"testing"
 
+	"github.com/charmbracelet/bubbles/viewport"
 	"github.com/opencode-ai/opencode/internal/message"
 )
 
@@ -107,5 +109,41 @@ func TestCopyTarget(t *testing.T) {
 	empty := &messagesCmp{}
 	if got := empty.copyTarget(); got != nil {
 		t.Fatalf("an empty list must have no target, got %+v", got)
+	}
+}
+
+func TestJumpToMessage(t *testing.T) {
+	vp := viewport.New(0, 20)
+	// SetYOffset clamps to the content bounds, so the viewport needs lines.
+	vp.SetContent(strings.Repeat("line\n", 40))
+	cmp := &messagesCmp{
+		messages: []message.Message{
+			{ID: "a", Role: message.User},
+			{ID: "b", Role: message.Assistant},
+			{ID: "c", Role: message.User},
+		},
+		uiMessages: []uiMessage{
+			{ID: "a", height: 5},
+			{ID: "b", height: 3},
+			{ID: "c", height: 7},
+		},
+		viewport: vp,
+	}
+
+	next, _ := cmp.Update(JumpToMessageMsg{MessageID: "b"})
+	got := next.(*messagesCmp)
+	if got.currentMsgID != "b" {
+		t.Errorf("currentMsgID = %q, want b", got.currentMsgID)
+	}
+	// The offset is the accumulated height of "a" plus its spacing.
+	if off := got.viewport.YOffset; off != 6 {
+		t.Errorf("YOffset = %d, want 6", off)
+	}
+
+	// An unknown id keeps the previous offset (Spec 09o).
+	next, _ = got.Update(JumpToMessageMsg{MessageID: "missing"})
+	got = next.(*messagesCmp)
+	if off := got.viewport.YOffset; off != 6 {
+		t.Errorf("YOffset after unknown id = %d, want 6", off)
 	}
 }

@@ -53,6 +53,7 @@ type (
 	showThemeListMsg   struct{}
 	showHelpMsg        struct{}
 	showQuitMsg        struct{}
+	showTimelineMsg    struct{}
 )
 
 // leaderTimeoutMsg fires when the leader sequence was not completed in time
@@ -211,6 +212,8 @@ const (
 	leaderRedoMessage
 	leaderOpenEditor
 	leaderToggleDetails
+	leaderTimeline
+	leaderCopySession
 )
 
 // leaderSuffixes maps the keystroke pressed after the leader to its action;
@@ -244,6 +247,8 @@ func applyLeaderBindings() {
 		{leaderRedoMessage, KeybindMessagesRedo},
 		{leaderOpenEditor, KeybindEditorOpen},
 		{leaderToggleDetails, KeybindToolDetails},
+		{leaderTimeline, KeybindSessionTimeline},
+		{leaderCopySession, KeybindSessionCopy},
 	}
 	leaderSuffixes = make(map[string]leaderAction, len(pairs))
 	leaderDirect = make(map[leaderAction]key.Binding, len(pairs))
@@ -324,6 +329,8 @@ var leaderHints = map[leaderAction]string{
 	leaderRedoMessage:    "redo message",
 	leaderOpenEditor:     "open editor",
 	leaderToggleDetails:  "toggle details",
+	leaderTimeline:       "jump to message",
+	leaderCopySession:    "copy transcript",
 }
 
 // leaderHintRows lists "suffix  label" pairs sorted by suffix: the which-key
@@ -351,8 +358,8 @@ func (a appModel) inChatContext() bool {
 	return a.currentPage == page.ChatPage &&
 		!a.showQuit && !a.showPermissions && !a.showCommandDialog &&
 		!a.showSessionDialog && !a.showModelDialog && !a.showAgentDialog &&
-		!a.showThemeDialog && !a.showFilepicker && !a.showHelp &&
-		!a.showPluginsDialog && !a.showConnectDialog &&
+		!a.showThemeDialog && !a.showTimelineDialog && !a.showFilepicker &&
+		!a.showHelp && !a.showPluginsDialog && !a.showConnectDialog &&
 		!a.showMultiArgumentsDialog
 }
 
@@ -383,6 +390,10 @@ func (a appModel) runLeaderAction(action leaderAction) (appModel, tea.Cmd) {
 		return a.updateChatPage(chat.OpenEditorMsg{})
 	case leaderToggleDetails:
 		return a.updateChatPage(chat.ToggleDetailsMsg{})
+	case leaderTimeline:
+		return a.openTimelineDialog()
+	case leaderCopySession:
+		return a.copySession()
 	}
 	return a, nil
 }
@@ -408,6 +419,11 @@ func (a *appModel) forwardMouseClick(msg tea.MouseMsg) tea.Cmd {
 	if a.showThemeDialog {
 		d, cmd := a.themeDialog.Update(msg)
 		a.themeDialog = d.(dialog.ThemeDialog)
+		return cmd
+	}
+	if a.showTimelineDialog {
+		d, cmd := a.timelineDialog.Update(msg)
+		a.timelineDialog = d.(dialog.TimelineDialog)
 		return cmd
 	}
 	var cmd tea.Cmd
@@ -454,6 +470,28 @@ func (a appModel) openThemeDialog() (appModel, tea.Cmd) {
 	return a, a.themeDialog.Init()
 }
 
+// openTimelineDialog loads the user messages of the current session and shows
+// the timeline picker (<leader>g and /timeline, Spec 09o).
+func (a appModel) openTimelineDialog() (appModel, tea.Cmd) {
+	if a.app == nil || a.selectedSession.ID == "" {
+		return a, util.ReportWarn("No active session")
+	}
+	if a.showQuit || a.showPermissions || a.showSessionDialog || a.showCommandDialog {
+		return a, nil
+	}
+	msgs, err := a.app.Messages.List(context.Background(), a.selectedSession.ID)
+	if err != nil {
+		return a, util.ReportError(err)
+	}
+	items := dialog.TimelineItems(msgs)
+	if len(items) == 0 {
+		return a, util.ReportWarn("No user messages in this session")
+	}
+	a.timelineDialog.SetItems(items)
+	a.showTimelineDialog = true
+	return a, a.timelineDialog.Init()
+}
+
 // openHelp shows the help dialog (/help, Spec 09h).
 func (a appModel) openHelp() (appModel, tea.Cmd) {
 	a.showHelp = true
@@ -469,6 +507,7 @@ func (a appModel) toggleQuit() (appModel, tea.Cmd) {
 	a.showCommandDialog = false
 	a.showModelDialog = false
 	a.showAgentDialog = false
+	a.showTimelineDialog = false
 	a.showMultiArgumentsDialog = false
 	if a.showFilepicker {
 		a.showFilepicker = false
@@ -556,6 +595,9 @@ type appModel struct {
 	showPluginsDialog bool
 	pluginsDialog     dialog.PluginsDialog
 
+	showTimelineDialog bool
+	timelineDialog     dialog.TimelineDialog
+
 	showConnectDialog bool
 	connectDialog     dialog.ConnectDialog
 
@@ -595,6 +637,8 @@ func (a appModel) Init() tea.Cmd {
 	cmd = a.filepicker.Init()
 	cmds = append(cmds, cmd)
 	cmd = a.themeDialog.Init()
+	cmds = append(cmds, cmd)
+	cmd = a.timelineDialog.Init()
 	cmds = append(cmds, cmd)
 	cmd = a.pluginsDialog.Init()
 	cmds = append(cmds, cmd)
@@ -698,6 +742,11 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.themeDialog = d.(dialog.ThemeDialog)
 			return a, cmd
 		}
+		if a.showTimelineDialog {
+			d, cmd := a.timelineDialog.Update(keyMsg)
+			a.timelineDialog = d.(dialog.TimelineDialog)
+			return a, cmd
+		}
 		a.pages[a.currentPage], cmd = a.pages[a.currentPage].Update(keyMsg)
 		return a, cmd
 	// Status
@@ -799,6 +848,9 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case exportSessionMsg:
 		return a.exportSession()
 
+	case copySessionMsg:
+		return a.copySession()
+
 	case undoMessageMsg:
 		return a.undoMessage()
 
@@ -810,6 +862,11 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.showCommandDialog {
 			d, cmd := a.commandDialog.Update(msg)
 			a.commandDialog = d.(dialog.CommandDialog)
+			return a, cmd
+		}
+		if a.showTimelineDialog {
+			d, cmd := a.timelineDialog.Update(msg)
+			a.timelineDialog = d.(dialog.TimelineDialog)
 			return a, cmd
 		}
 		return a, nil
@@ -829,6 +886,19 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.openHelp()
 	case showQuitMsg:
 		return a.toggleQuit()
+	case showTimelineMsg:
+		return a.openTimelineDialog()
+
+	case dialog.CloseTimelineDialogMsg:
+		a.showTimelineDialog = false
+		return a, nil
+	case dialog.TimelineJumpMsg:
+		// Close the picker and scroll the transcript to the chosen message.
+		a.showTimelineDialog = false
+		return a.updateChatPage(chat.JumpToMessageMsg{MessageID: msg.MessageID})
+	case dialog.TimelinePreviewMsg:
+		// Scroll behind the open dialog without closing it (Spec 09o).
+		return a.updateChatPage(chat.JumpToMessageMsg{MessageID: msg.MessageID})
 
 	case startCompactSessionMsg:
 		// Start compacting the current session
@@ -1249,6 +1319,16 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	if a.showTimelineDialog {
+		d, timelineCmd := a.timelineDialog.Update(msg)
+		a.timelineDialog = d.(dialog.TimelineDialog)
+		cmds = append(cmds, timelineCmd)
+		// Only block key messages send all other messages down
+		if _, ok := msg.(tea.KeyMsg); ok {
+			return a, tea.Batch(cmds...)
+		}
+	}
+
 	if a.showPluginsDialog {
 		d, pluginsCmd := a.pluginsDialog.Update(msg)
 		a.pluginsDialog = d.(dialog.PluginsDialog)
@@ -1589,6 +1669,21 @@ func (a appModel) View() string {
 		)
 	}
 
+	if a.showTimelineDialog {
+		overlay := a.timelineDialog.View()
+		row := lipgloss.Height(appView) / 2
+		row -= lipgloss.Height(overlay) / 2
+		col := lipgloss.Width(appView) / 2
+		col -= lipgloss.Width(overlay) / 2
+		appView = layout.PlaceOverlay(
+			col,
+			row,
+			overlay,
+			appView,
+			true,
+		)
+	}
+
 	if a.showInitDialog {
 		overlay := a.initDialog.View()
 		appView = layout.PlaceOverlay(
@@ -1655,22 +1750,23 @@ func New(app *app.App) tea.Model {
 	applyKeybinds()
 	startPage := page.ChatPage
 	model := &appModel{
-		currentPage:   startPage,
-		loadedPages:   make(map[page.PageID]bool),
-		status:        core.NewStatusCmp(app.LSPClients, app.Agents.Active),
-		help:          dialog.NewHelpCmp(),
-		quit:          dialog.NewQuitCmp(),
-		sessionDialog: dialog.NewSessionDialogCmp(),
-		commandDialog: dialog.NewCommandDialogCmp(),
-		modelDialog:   dialog.NewModelDialogCmp(app.Agents.Active),
-		agentDialog:   dialog.NewAgentDialogCmp(app.Agents.Active),
-		permissions:   dialog.NewPermissionDialogCmp(),
-		initDialog:    dialog.NewInitDialogCmp(),
-		themeDialog:   dialog.NewThemeDialogCmp(),
-		pluginsDialog: dialog.NewPluginsDialog(),
-		connectDialog: dialog.NewConnectDialog(),
-		app:           app,
-		commands:      []dialog.Command{},
+		currentPage:    startPage,
+		loadedPages:    make(map[page.PageID]bool),
+		status:         core.NewStatusCmp(app.LSPClients, app.Agents.Active),
+		help:           dialog.NewHelpCmp(),
+		quit:           dialog.NewQuitCmp(),
+		sessionDialog:  dialog.NewSessionDialogCmp(),
+		commandDialog:  dialog.NewCommandDialogCmp(),
+		modelDialog:    dialog.NewModelDialogCmp(app.Agents.Active),
+		agentDialog:    dialog.NewAgentDialogCmp(app.Agents.Active),
+		permissions:    dialog.NewPermissionDialogCmp(),
+		initDialog:     dialog.NewInitDialogCmp(),
+		themeDialog:    dialog.NewThemeDialogCmp(),
+		timelineDialog: dialog.NewTimelineDialogCmp(),
+		pluginsDialog:  dialog.NewPluginsDialog(),
+		connectDialog:  dialog.NewConnectDialog(),
+		app:            app,
+		commands:       []dialog.Command{},
 		pages: map[page.PageID]tea.Model{
 			page.ChatPage: page.NewChatPage(app),
 			page.LogsPage: page.NewLogsPage(),
@@ -1714,6 +1810,24 @@ If there are Cursor rules (in .cursor/rules/ or .cursorrules) or Copilot rules (
 		Description: "Export the conversation to Markdown and open it in your editor",
 		Handler: func(cmd dialog.Command) tea.Cmd {
 			return util.CmdHandler(exportSessionMsg{})
+		},
+	})
+
+	model.RegisterCommand(dialog.Command{
+		ID:          "timeline",
+		Title:       "Jump to Message",
+		Description: "Pick a user message of this session and jump to it",
+		Handler: func(cmd dialog.Command) tea.Cmd {
+			return util.CmdHandler(showTimelineMsg{})
+		},
+	})
+
+	model.RegisterCommand(dialog.Command{
+		ID:          "session_copy",
+		Title:       "Copy Session Transcript",
+		Description: "Copy the whole conversation as Markdown to the clipboard",
+		Handler: func(cmd dialog.Command) tea.Cmd {
+			return util.CmdHandler(copySessionMsg{})
 		},
 	})
 

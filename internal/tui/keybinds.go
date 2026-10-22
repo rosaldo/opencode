@@ -11,31 +11,33 @@ import (
 type KeybindID string
 
 const (
-	KeybindAppExit        KeybindID = "app_exit"
-	KeybindCommandList    KeybindID = "command_list"
-	KeybindCommandPalette KeybindID = "command_palette"
-	KeybindAgentList      KeybindID = "agent_list"
-	KeybindSessionList    KeybindID = "session_list"
-	KeybindSessionNew     KeybindID = "session_new"
-	KeybindSessionRename  KeybindID = "session_rename"
-	KeybindSessionDelete  KeybindID = "session_delete"
-	KeybindModelList      KeybindID = "model_list"
-	KeybindThemeList      KeybindID = "theme_list"
-	KeybindSidebarToggle  KeybindID = "sidebar_toggle"
-	KeybindPromptPaste    KeybindID = "prompt_paste"
-	KeybindHelpToggle     KeybindID = "help_toggle"
-	KeybindLogsToggle     KeybindID = "logs_toggle"
-	KeybindFilePicker     KeybindID = "file_picker"
-	KeybindSessionCompact KeybindID = "session_compact"
-	KeybindSessionExport  KeybindID = "session_export"
-	KeybindHistoryPrev    KeybindID = "history_previous"
-	KeybindHistoryNext    KeybindID = "history_next"
-	KeybindDisplayThink   KeybindID = "display_thinking"
-	KeybindMessagesCopy   KeybindID = "messages_copy"
-	KeybindMessagesUndo   KeybindID = "messages_undo"
-	KeybindMessagesRedo   KeybindID = "messages_redo"
-	KeybindEditorOpen     KeybindID = "editor_open"
-	KeybindToolDetails    KeybindID = "tool_details"
+	KeybindAppExit         KeybindID = "app_exit"
+	KeybindCommandList     KeybindID = "command_list"
+	KeybindCommandPalette  KeybindID = "command_palette"
+	KeybindAgentList       KeybindID = "agent_list"
+	KeybindSessionList     KeybindID = "session_list"
+	KeybindSessionNew      KeybindID = "session_new"
+	KeybindSessionRename   KeybindID = "session_rename"
+	KeybindSessionDelete   KeybindID = "session_delete"
+	KeybindModelList       KeybindID = "model_list"
+	KeybindThemeList       KeybindID = "theme_list"
+	KeybindSidebarToggle   KeybindID = "sidebar_toggle"
+	KeybindPromptPaste     KeybindID = "prompt_paste"
+	KeybindHelpToggle      KeybindID = "help_toggle"
+	KeybindLogsToggle      KeybindID = "logs_toggle"
+	KeybindFilePicker      KeybindID = "file_picker"
+	KeybindSessionCompact  KeybindID = "session_compact"
+	KeybindSessionExport   KeybindID = "session_export"
+	KeybindSessionCopy     KeybindID = "session_copy"
+	KeybindSessionTimeline KeybindID = "session_timeline"
+	KeybindHistoryPrev     KeybindID = "history_previous"
+	KeybindHistoryNext     KeybindID = "history_next"
+	KeybindDisplayThink    KeybindID = "display_thinking"
+	KeybindMessagesCopy    KeybindID = "messages_copy"
+	KeybindMessagesUndo    KeybindID = "messages_undo"
+	KeybindMessagesRedo    KeybindID = "messages_redo"
+	KeybindEditorOpen      KeybindID = "editor_open"
+	KeybindToolDetails     KeybindID = "tool_details"
 )
 
 // defaultLeader is the default value of the <leader> placeholder.
@@ -64,8 +66,12 @@ var defaultKeybinds = map[KeybindID]string{
 	KeybindFilePicker:     "ctrl+f",
 	KeybindSessionCompact: "<leader>c",
 	KeybindSessionExport:  "<leader>x",
-	KeybindHistoryPrev:    "up",
-	KeybindHistoryNext:    "down",
+	// Like the TS defaults: session_copy is palette-only and session_timeline
+	// jumps to a user message with <leader>g.
+	KeybindSessionCopy:     noneValue,
+	KeybindSessionTimeline: "<leader>g",
+	KeybindHistoryPrev:     "up",
+	KeybindHistoryNext:     "down",
 	// Like the TS default: /thinking is the discoverable way to toggle it.
 	KeybindDisplayThink: noneValue,
 	KeybindMessagesCopy: "<leader>y",

@@ -254,13 +254,30 @@ Fechar lacunas da TUI: **keybinds configuráveis**, suporte a **mouse/scroll**, 
     - Testes: `mouse_test.go` (clickRow de session/model/theme), `simple-list_test.go`
       (`ListZoneID`/`ListClickedRow`/`clickRow`), `commands_test.go` (relay),
       `sidebar_test.go` (`clickZone`, seam de working directory).
+  - **Session timeline + copy transcript (09o)** — feito:
+    - `session_timeline` (`<leader>g`, igual ao TS) → `leaderTimeline` → `openTimelineDialog`:
+      lista as **mensagens de usuário** da sessão ativa (mais recentes primeiro, com hora
+      `15:04:05`), busca fuzzy (`/`), preview ao mover a seleção (`TimelinePreviewMsg` →
+      `chat.JumpToMessageMsg`, o transcript rola atrás do diálogo) e Enter/clique →
+      `TimelineJumpMsg` (fecha e pula). Esc fecha. Slash `/timeline` ("Jump to message").
+    - `chat.JumpToMessageMsg` → `messagesCmp`: foca a mensagem e usa o `scrollToMessage`
+      existente (offset = altura acumulada).
+    - `session_copy` (default `none`, sem slash — igual ao TS): transcrição Markdown da
+      sessão ativa → clipboard (`util.WriteClipboardText`) com toast; comando paleta
+      "Copy Session Transcript" (`/copy` no TS é outra coisa — `messages_copy`).
+    - Testes: `timeline_test.go` (itens user/newest-first, Enter/Esc, ListActivatedMsg,
+      busca, preview), `list_test.go` (`TestJumpToMessage`), `leader_test.go`/
+      `keybinds_test.go` (sufixo `g`, `session_copy` desabilitado).
 
 - Pendências conscientes: codificação **sixel** de fato (hoje o protocolo sixel detectado usa o
   fallback half-block, que funciona em qualquer terminal truecolor); cliques de mouse nos
-  diálogos de agents/plugins ainda sem hit-test (Spec 09n); keybinds `session_copy/timeline/fork`
-  e `prompt_stash*` ainda sem ação; agrupamento do palette por contexto; `/undo`/`/redo` **não**
-  fazem rollback de arquivos via git como no TS nem reexecutam o agent (decisão consciente de
-  escopo, Spec 09k).
+  diálogos de agents/plugins ainda sem hit-test (Spec 09n); `session_fork` (`/fork`,
+  `session_fork`) ainda sem ação — o service Go não tem `Fork` (copiar histórico com boundary
+  antes de uma mensagem) e é a próxima etapa (09p); o diálogo de timeline do TS também abre um
+  "Message Actions" (Jump to / Revert / Copy / Fork) na seleção — aqui Enter pula direto até
+  que Revert/Fork existam; keybinds `session_move`/`prompt_stash*` ainda sem ação; agrupamento
+  do palette por contexto; `/undo`/`/redo` **não** fazem rollback de arquivos via git como no TS
+  nem reexecutam o agent (decisão consciente de escopo, Spec 09k).
 
 ## Riscos
 

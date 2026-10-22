@@ -18,22 +18,27 @@ func TestResolveKeybindsDefaults(t *testing.T) {
 	}
 	// Defaults must equal the pre-Spec-09 keymap.
 	cases := map[KeybindID][]string{
-		KeybindAppExit:       {"ctrl+c"},
-		KeybindCommandList:   {"ctrl+k"},
-		KeybindAgentList:     {"tab"},
-		KeybindLogsToggle:    {"ctrl+l"},
-		KeybindFilePicker:    {"ctrl+f"},
-		KeybindModelList:     {"ctrl+o"},
-		KeybindThemeList:     {"ctrl+t"},
-		KeybindHelpToggle:    {"ctrl+_"},
-		KeybindSessionNew:    {"ctrl+x", "n"},
-		KeybindSessionRename: {"ctrl+x", "r"},
-		KeybindSessionDelete: {"ctrl+x", "d"},
+		KeybindAppExit:         {"ctrl+c"},
+		KeybindCommandList:     {"ctrl+k"},
+		KeybindAgentList:       {"tab"},
+		KeybindLogsToggle:      {"ctrl+l"},
+		KeybindFilePicker:      {"ctrl+f"},
+		KeybindModelList:       {"ctrl+o"},
+		KeybindThemeList:       {"ctrl+t"},
+		KeybindHelpToggle:      {"ctrl+_"},
+		KeybindSessionNew:      {"ctrl+x", "n"},
+		KeybindSessionRename:   {"ctrl+x", "r"},
+		KeybindSessionDelete:   {"ctrl+x", "d"},
+		KeybindSessionTimeline: {"ctrl+x", "g"},
 	}
 	for id, want := range cases {
 		if got := kb.Keys(id); !reflect.DeepEqual(got, want) {
 			t.Errorf("%s = %v, want %v", id, got, want)
 		}
+	}
+	// session_copy is palette-only, like the TS default (Spec 09o).
+	if kb.Enabled(KeybindSessionCopy) {
+		t.Error("session_copy default must be disabled")
 	}
 }
 
@@ -125,6 +130,7 @@ func TestApplyLeaderBindingsDefaults(t *testing.T) {
 		"u": leaderUndoMessage,
 		".": leaderRedoMessage,
 		"e": leaderOpenEditor,
+		"g": leaderTimeline,
 	}
 	if !reflect.DeepEqual(leaderSuffixes, want) {
 		t.Errorf("suffixes = %v, want %v", leaderSuffixes, want)
@@ -159,6 +165,7 @@ func TestApplyLeaderBindingsReconfigured(t *testing.T) {
 		"u": leaderUndoMessage,
 		".": leaderRedoMessage,
 		"e": leaderOpenEditor,
+		"g": leaderTimeline,
 	}
 	if !reflect.DeepEqual(leaderSuffixes, want) {
 		t.Errorf("suffixes = %v, want %v", leaderSuffixes, want)

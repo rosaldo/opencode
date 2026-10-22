@@ -2,6 +2,7 @@
 
 > Generated from `git` by `scripts/gen-changelog.sh` — do not edit by hand.
 
+- **v1.15.0** (2026-10-22) · `feat` — tui: session timeline dialog and copy session transcript (09o)
 - **v1.14.0** (2026-10-22) · `feat` — tui: mouse click hit-testing for list dialogs and the sidebar (09n)
 - **v1.13.0** (2026-10-22) · `feat` — tui: editor_open keybind (<leader>e) and tool_details id wired to the leader (09m)
 - **v1.12.0** (2026-10-22) · `feat` — tui: /details collapses tool call outputs to name+params (09l)
