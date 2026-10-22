@@ -92,6 +92,49 @@ func ClipboardText() (string, error) {
 	return "", ErrClipboardUnavailable
 }
 
+// clipboardCmd is one platform helper invocation used to reach the clipboard.
+type clipboardCmd struct {
+	name string
+	args []string
+}
+
+// WriteClipboardText replaces the system clipboard contents with text
+// (Spec 09j, messages_copy). It returns ErrClipboardUnavailable when no helper
+// is present or none of them accepts the text.
+func WriteClipboardText(text string) error {
+	var candidates []clipboardCmd
+	switch runtime.GOOS {
+	case "darwin":
+		candidates = []clipboardCmd{{name: "pbcopy"}}
+	default:
+		candidates = []clipboardCmd{
+			{name: "wl-copy"},
+			{name: "xclip", args: []string{"-selection", "clipboard"}},
+		}
+	}
+	return writeClipboardWith(text, candidates)
+}
+
+// writeClipboardWith is WriteClipboardText with the helper list made explicit
+// so tests can drive it without touching a real clipboard.
+func writeClipboardWith(text string, candidates []clipboardCmd) error {
+	for _, c := range candidates {
+		path, lookErr := exec.LookPath(c.name)
+		if lookErr != nil {
+			continue
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), clipboardTimeout)
+		run := exec.CommandContext(ctx, path, c.args...) //nolint:gosec
+		run.Stdin = strings.NewReader(text)
+		runErr := run.Run()
+		cancel()
+		if runErr == nil {
+			return nil
+		}
+	}
+	return ErrClipboardUnavailable
+}
+
 // SniffImageMime returns the image mime type for the given bytes, or "" when it
 // is not a recognised image. Currently PNG and JPEG magic numbers are handled.
 func SniffImageMime(b []byte) string {

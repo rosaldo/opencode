@@ -31,6 +31,7 @@ const (
 	KeybindHistoryPrev    KeybindID = "history_previous"
 	KeybindHistoryNext    KeybindID = "history_next"
 	KeybindDisplayThink   KeybindID = "display_thinking"
+	KeybindMessagesCopy   KeybindID = "messages_copy"
 )
 
 // defaultLeader is the default value of the <leader> placeholder.
@@ -63,6 +64,7 @@ var defaultKeybinds = map[KeybindID]string{
 	KeybindHistoryNext:    "down",
 	// Like the TS default: /thinking is the discoverable way to toggle it.
 	KeybindDisplayThink: noneValue,
+	KeybindMessagesCopy: "<leader>y",
 }
 
 // Keybinds is the resolved keymap: each id maps to the list of key strings that

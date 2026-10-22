@@ -205,6 +205,7 @@ const (
 	leaderToggleSidebar
 	leaderExportSession
 	leaderToggleThinking
+	leaderCopyMessage
 )
 
 // leaderSuffixes maps the keystroke pressed after the leader to its action;
@@ -229,6 +230,7 @@ func applyLeaderBindings() {
 		leaderToggleSidebar:  KeybindSidebarToggle,
 		leaderExportSession:  KeybindSessionExport,
 		leaderToggleThinking: KeybindDisplayThink,
+		leaderCopyMessage:    KeybindMessagesCopy,
 	} {
 		bound := resolvedKeybinds.Keys(id)
 		if len(bound) == 0 {
@@ -296,6 +298,7 @@ var leaderHints = map[leaderAction]string{
 	leaderToggleSidebar:  "toggle sidebar",
 	leaderExportSession:  "export session",
 	leaderToggleThinking: "toggle thinking",
+	leaderCopyMessage:    "copy message",
 }
 
 // leaderHintRows lists "suffix  label" pairs sorted by suffix: the which-key
@@ -345,6 +348,8 @@ func (a appModel) runLeaderAction(action leaderAction) (appModel, tea.Cmd) {
 		return a.exportSession()
 	case leaderToggleThinking:
 		return a.updateChatPage(chat.ToggleThinkingMsg{})
+	case leaderCopyMessage:
+		return a.updateChatPage(chat.CopyMessageMsg{})
 	}
 	return a, nil
 }

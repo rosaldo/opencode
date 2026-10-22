@@ -34,7 +34,8 @@ Fechar lacunas da TUI: **keybinds configuráveis**, suporte a **mouse/scroll**, 
 - Mapa nome→binding com defaults; `<leader>` e combos; `"none"`/`false` desabilita.
 - Definir o conjunto de IDs (subset do TS): `app_exit`, `command_list`, `agent_list`,
   `session_list/new/rename/delete/interrupt/compact/export`, `model_list`, `theme_list`,
-  `sidebar_toggle`, `prompt_paste`, `history_previous/next`, `display_thinking`, etc.
+  `sidebar_toggle`, `prompt_paste`, `history_previous/next`, `display_thinking`, `messages_copy`,
+  etc.
 - Merge sobre defaults; IDs desconhecidos rejeitados com aviso.
 
 ### Mouse
@@ -190,13 +191,24 @@ Fechar lacunas da TUI: **keybinds configuráveis**, suporte a **mouse/scroll**, 
       `/thinking` em `tui.New` e keybind id `display_thinking` (default `none`, igual ao TS) que
       vira a ação de leader `leaderToggleThinking` quando configurado.
     - Testes: `message_test.go` (hidden com/sem resposta), `list_test.go` (toggle).
+  - **Cópia de mensagem (09j)** — feito:
+    - `messages_copy` (`<leader>y`, igual ao TS) → ação de leader `leaderCopyMessage` →
+      `chat.CopyMessageMsg` → `messagesCmp`: copia a mensagem **focada** (`currentMsgID`; o
+      `SetSession` foca a última) ou, sem foco, a mais recente.
+    - `MessagePlainText` achata as partes de texto (`TextContent` unidos por `\n\n`, raciocínio
+      descartado; sem texto, os nomes dos tool calls) e `util.WriteClipboardText`
+      (`pbcopy`/`wl-copy`/`xclip -selection clipboard`, timeout de 2s) degrada para
+      `ErrClipboardUnavailable` com aviso.
+    - Testes: `list_test.go` (plain text/alvo de cópia), `util/clipboard_test.go`
+      (helper ausente/encadeado, sem tocar no clipboard real), `leader_test.go`/
+      `keybinds_test.go` (sufixo `y`).
 
 - Pendências conscientes: codificação **sixel** de fato (hoje o protocolo sixel detectado usa o
   fallback half-block, que funciona em qualquer terminal truecolor) e integração de hit-test das
   demais zonas (sidebar/diálogos); comando `/details` (sem estado de detalhes de tool
-  correspondente); keybinds `editor_open`, `messages_copy/undo/redo`,
-  `session_copy/timeline/fork` e `prompt_stash*` ainda sem ação; agrupamento do palette por
-  contexto.
+  correspondente); keybinds `editor_open`, `messages_undo/redo` (undo/redo com rollback de
+  arquivos via git — decidir escopo antes), `session_copy/timeline/fork` e `prompt_stash*` ainda
+  sem ação; agrupamento do palette por contexto.
 
 ## Riscos
 

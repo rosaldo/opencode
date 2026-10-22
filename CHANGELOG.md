@@ -2,6 +2,7 @@
 
 > Generated from `git` by `scripts/gen-changelog.sh` — do not edit by hand.
 
+- **v1.10.0** (2026-10-22) · `feat` — tui: messages_copy keybind copies the focused message to the clipboard (09j)
 - **v1.9.0** (2026-10-22) · `feat` — tui: /thinking command and display_thinking keybind to hide reasoning blocks (09i)
 - **v1.8.0** (2026-10-22) · `feat` — tui: builtin slash commands /new /sessions /models /themes /help /editor /exit with aliases (09h)
 - **v1.7.0** (2026-10-22) · `feat` — tui: /export command and session_export keybind (09g)

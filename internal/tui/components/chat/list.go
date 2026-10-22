@@ -51,6 +51,10 @@ type renderFinishedMsg struct{}
 // the /thinking command and the display_thinking keybind).
 type ToggleThinkingMsg struct{}
 
+// CopyMessageMsg puts the focused (or most recent) message on the clipboard
+// (Spec 09j: the messages_copy keybind).
+type CopyMessageMsg struct{}
+
 type MessageKeys struct {
 	PageDown     key.Binding
 	PageUp       key.Binding
@@ -97,6 +101,19 @@ func (m *messagesCmp) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			state = "hidden"
 		}
 		return m, util.ReportInfo("Thinking blocks " + state)
+	case CopyMessageMsg:
+		target := m.copyTarget()
+		if target == nil {
+			return m, util.ReportWarn("No message to copy")
+		}
+		text := MessagePlainText(*target)
+		if text == "" {
+			return m, util.ReportWarn("That message has no text to copy")
+		}
+		if err := util.WriteClipboardText(text); err != nil {
+			return m, util.ReportError(err)
+		}
+		return m, util.ReportInfo("Message copied to clipboard")
 	case SessionSelectedMsg:
 		if msg.ID != m.session.ID {
 			cmd := m.SetSession(msg)
@@ -514,6 +531,42 @@ func (m *messagesCmp) SetSession(session session.Session) tea.Cmd {
 		m.renderView()
 		return renderFinishedMsg{}
 	}
+}
+
+// copyTarget is the message messages_copy acts on: the focused one, or the
+// most recent when nothing is focused (Spec 09j).
+func (m *messagesCmp) copyTarget() *message.Message {
+	for i := range m.messages {
+		if m.messages[i].ID == m.currentMsgID {
+			return &m.messages[i]
+		}
+	}
+	if len(m.messages) == 0 {
+		return nil
+	}
+	return &m.messages[len(m.messages)-1]
+}
+
+// MessagePlainText flattens the textual parts of a message for the clipboard
+// (Spec 09j). A message that only holds tool calls falls back to its call
+// names so the copy is never empty.
+func MessagePlainText(msg message.Message) string {
+	var parts []string
+	for _, part := range msg.Parts {
+		if text, ok := part.(message.TextContent); ok {
+			if trimmed := strings.TrimSpace(text.Text); trimmed != "" {
+				parts = append(parts, trimmed)
+			}
+		}
+	}
+	if len(parts) == 0 {
+		for _, part := range msg.Parts {
+			if call, ok := part.(message.ToolCall); ok && call.Name != "" {
+				parts = append(parts, "`"+call.Name+"`")
+			}
+		}
+	}
+	return strings.Join(parts, "\n\n")
 }
 
 func (m *messagesCmp) BindingKeys() []key.Binding {
