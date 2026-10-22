@@ -27,6 +27,7 @@ const (
 	KeybindLogsToggle     KeybindID = "logs_toggle"
 	KeybindFilePicker     KeybindID = "file_picker"
 	KeybindSessionCompact KeybindID = "session_compact"
+	KeybindSessionExport  KeybindID = "session_export"
 	KeybindHistoryPrev    KeybindID = "history_previous"
 	KeybindHistoryNext    KeybindID = "history_next"
 )
@@ -56,6 +57,7 @@ var defaultKeybinds = map[KeybindID]string{
 	KeybindLogsToggle:     "ctrl+l",
 	KeybindFilePicker:     "ctrl+f",
 	KeybindSessionCompact: "<leader>c",
+	KeybindSessionExport:  "<leader>x",
 	KeybindHistoryPrev:    "up",
 	KeybindHistoryNext:    "down",
 }

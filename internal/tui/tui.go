@@ -193,6 +193,7 @@ const (
 	leaderDeleteSession
 	leaderCompactSession
 	leaderToggleSidebar
+	leaderExportSession
 )
 
 // leaderSuffixes maps the keystroke pressed after the leader to its action;
@@ -215,6 +216,7 @@ func applyLeaderBindings() {
 		leaderDeleteSession:  KeybindSessionDelete,
 		leaderCompactSession: KeybindSessionCompact,
 		leaderToggleSidebar:  KeybindSidebarToggle,
+		leaderExportSession:  KeybindSessionExport,
 	} {
 		bound := resolvedKeybinds.Keys(id)
 		if len(bound) == 0 {
@@ -280,6 +282,7 @@ var leaderHints = map[leaderAction]string{
 	leaderDeleteSession:  "delete session",
 	leaderCompactSession: "compact session",
 	leaderToggleSidebar:  "toggle sidebar",
+	leaderExportSession:  "export session",
 }
 
 // leaderHintRows lists "suffix  label" pairs sorted by suffix: the which-key
@@ -325,6 +328,8 @@ func (a appModel) runLeaderAction(action leaderAction) (appModel, tea.Cmd) {
 		return a.openSessionDialogFor(a.selectedSession)
 	case leaderCompactSession:
 		return a, util.CmdHandler(startCompactSessionMsg{})
+	case leaderExportSession:
+		return a.exportSession()
 	}
 	return a, nil
 }
@@ -642,6 +647,9 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.leaderPending = false
 		}
 		return a, nil
+
+	case exportSessionMsg:
+		return a.exportSession()
 
 	case startCompactSessionMsg:
 		// Start compacting the current session
@@ -1554,6 +1562,15 @@ If there are Cursor rules (in .cursor/rules/ or .cursorrules) or Copilot rules (
 			}
 		},
 	})
+	model.RegisterCommand(dialog.Command{
+		ID:          "export",
+		Title:       "Export Session",
+		Description: "Export the conversation to Markdown and open it in your editor",
+		Handler: func(cmd dialog.Command) tea.Cmd {
+			return util.CmdHandler(exportSessionMsg{})
+		},
+	})
+
 	model.RegisterCommand(dialog.Command{
 		ID:          "plugins",
 		Title:       "Plugins",

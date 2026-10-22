@@ -212,20 +212,12 @@ func (m *editorCmp) historyNext() tea.Cmd {
 }
 
 func (m *editorCmp) openEditor() tea.Cmd {
-	editor := os.Getenv("EDITOR")
-	if editor == "" {
-		editor = "nvim"
-	}
-
 	tmpfile, err := os.CreateTemp("", "msg_*.md")
 	if err != nil {
 		return util.ReportError(err)
 	}
 	tmpfile.Close()
-	c := exec.Command(editor, tmpfile.Name()) //nolint:gosec
-	c.Stdin = os.Stdin
-	c.Stdout = os.Stdout
-	c.Stderr = os.Stderr
+	c := EditorCommand(tmpfile.Name())
 	return tea.ExecProcess(c, func(err error) tea.Msg {
 		if err != nil {
 			return util.ReportError(err)
@@ -501,6 +493,20 @@ func (m *editorCmp) BindingKeys() []key.Binding {
 	bindings = append(bindings, layout.KeyMapToSlice(editorMaps)...)
 	bindings = append(bindings, layout.KeyMapToSlice(DeleteKeyMaps)...)
 	return bindings
+}
+
+// EditorCommand builds the $EDITOR invocation for path, falling back to nvim,
+// with the process attached to the terminal (Spec 09).
+func EditorCommand(path string) *exec.Cmd {
+	editor := os.Getenv("EDITOR")
+	if editor == "" {
+		editor = "nvim"
+	}
+	c := exec.Command(editor, path) //nolint:gosec
+	c.Stdin = os.Stdin
+	c.Stdout = os.Stdout
+	c.Stderr = os.Stderr
+	return c
 }
 
 func CreateTextArea(existing *textarea.Model) textarea.Model {

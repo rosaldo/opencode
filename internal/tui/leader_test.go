@@ -18,7 +18,7 @@ func TestLeaderHintRowsSorted(t *testing.T) {
 	applyLeaderBindings()
 
 	rows := leaderHintRows()
-	wantOrder := []string{"b", "c", "d", "n", "r"}
+	wantOrder := []string{"b", "c", "d", "n", "r", "x"}
 	if len(rows) != len(wantOrder) {
 		t.Fatalf("rows = %q, want %d entries", rows, len(wantOrder))
 	}
@@ -32,6 +32,9 @@ func TestLeaderHintRowsSorted(t *testing.T) {
 	}
 	if !strings.Contains(rows[4], "rename session") {
 		t.Errorf("row for r = %q, want the rename label", rows[4])
+	}
+	if !strings.Contains(rows[5], "export session") {
+		t.Errorf("row for x = %q, want the export label", rows[5])
 	}
 }
 

@@ -33,7 +33,7 @@ Fechar lacunas da TUI: **keybinds configuráveis**, suporte a **mouse/scroll**, 
 
 - Mapa nome→binding com defaults; `<leader>` e combos; `"none"`/`false` desabilita.
 - Definir o conjunto de IDs (subset do TS): `app_exit`, `command_list`, `agent_list`,
-  `session_list/new/rename/delete/interrupt/compact`, `model_list`, `theme_list`,
+  `session_list/new/rename/delete/interrupt/compact/export`, `model_list`, `theme_list`,
   `sidebar_toggle`, `prompt_paste`, `history_previous/next`, etc.
 - Merge sobre defaults; IDs desconhecidos rejeitados com aviso.
 
@@ -157,6 +157,18 @@ Fechar lacunas da TUI: **keybinds configuráveis**, suporte a **mouse/scroll**, 
       com o histórico multilinha restaurado. `down` só anda com histórico a percorrer e restaura o
       rascunho ao fim.
     - Testes: `internal/tui/components/chat/editor_history_test.go`.
+  - **Export da conversa (09g)** — feito:
+    - Comando **`/export`** registrado em `tui.New` (ID `export`, "Export Session") →
+      `exportSessionMsg` tratado no `appModel`: valida a sessão ativa, `app.Messages.List`,
+      renderiza Markdown (`chat.SessionToMarkdown`: título, `> N messages · exported`, seções por
+      papel, texto raciocínio/tool call/tool result em fence — `Finish`/imagens descartados),
+      grava em `os.CreateTemp("opencode-export-*.md")` e abre no `$EDITOR` via `tea.ExecProcess`
+      (`chat.EditorCommand`, extraído do `ctrl+e`); avisa "No active session to export" /
+      "Nothing to export yet".
+    - **`session_export`** (`<leader>x`, igual ao TS): `leaderExportSession` em `runLeaderAction`
+      e linha no which-key ("export session").
+    - Testes: `internal/tui/components/chat/export_test.go` (render + título padrão + tool error),
+      `leader_test.go`/`keybinds_test.go` (sufixo `x`).
 
 - Pendências conscientes: codificação **sixel** de fato (hoje o protocolo sixel detectado usa o
   fallback half-block, que funciona em qualquer terminal truecolor) e integração de hit-test das

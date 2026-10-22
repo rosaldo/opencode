@@ -120,6 +120,7 @@ func TestApplyLeaderBindingsDefaults(t *testing.T) {
 		"d": leaderDeleteSession,
 		"c": leaderCompactSession,
 		"b": leaderToggleSidebar,
+		"x": leaderExportSession,
 	}
 	if !reflect.DeepEqual(leaderSuffixes, want) {
 		t.Errorf("suffixes = %v, want %v", leaderSuffixes, want)
@@ -149,6 +150,7 @@ func TestApplyLeaderBindingsReconfigured(t *testing.T) {
 		"n": leaderNewSession,
 		"r": leaderRenameSession,
 		"b": leaderToggleSidebar,
+		"x": leaderExportSession,
 	}
 	if !reflect.DeepEqual(leaderSuffixes, want) {
 		t.Errorf("suffixes = %v, want %v", leaderSuffixes, want)

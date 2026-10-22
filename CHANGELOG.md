@@ -2,6 +2,7 @@
 
 > Generated from `git` by `scripts/gen-changelog.sh` — do not edit by hand.
 
+- **v1.7.0** (2026-10-22) · `feat` — tui: /export command and session_export keybind (09g)
 - **v1.6.0** (2026-10-21) · `feat` — tui: prompt history with configurable history_previous/next keys (09f)
 - **v1.5.0** (2026-10-21) · `feat` — tui: leader which-key popup and configurable leader timeout (tui.leader_timeout, 09d)
 - **v1.4.0** (2026-10-21) · `feat` — tui: fuzzy / search in the command dialog and configurable prompt_paste keybind (09d)
