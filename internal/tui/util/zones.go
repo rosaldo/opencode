@@ -62,3 +62,12 @@ func (z *ZoneSet) Reset() {
 	}
 	z.ids = z.ids[:0]
 }
+
+// Len reports how many zone ids the set currently tracks (after a render
+// pass, one per marked element).
+func (z *ZoneSet) Len() int {
+	if z == nil {
+		return 0
+	}
+	return len(z.ids)
+}

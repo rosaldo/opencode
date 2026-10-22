@@ -1572,8 +1572,12 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return a, tea.Batch(cmds...)
 }
 
-// RegisterCommand adds a command to the command dialog
+// RegisterCommand adds a command to the command dialog. Commands without an
+// explicit group land under "Custom" (Spec 09s).
 func (a *appModel) RegisterCommand(cmd dialog.Command) {
+	if cmd.Group == "" {
+		cmd.Group = "Custom"
+	}
 	a.commands = append(a.commands, cmd)
 }
 
@@ -2026,6 +2030,7 @@ func New(app *app.App) tea.Model {
 
 	model.RegisterCommand(dialog.Command{
 		ID:          "init",
+		Group:       "System",
 		Title:       "Initialize Project",
 		Description: "Create/Update the OpenCode.md memory file",
 		Handler: func(cmd dialog.Command) tea.Cmd {
@@ -2046,6 +2051,7 @@ If there are Cursor rules (in .cursor/rules/ or .cursorrules) or Copilot rules (
 
 	model.RegisterCommand(dialog.Command{
 		ID:          "compact",
+		Group:       "Session",
 		Title:       "Compact Session",
 		Description: "Summarize the current session and create a new one with the summary",
 		Handler: func(cmd dialog.Command) tea.Cmd {
@@ -2056,6 +2062,7 @@ If there are Cursor rules (in .cursor/rules/ or .cursorrules) or Copilot rules (
 	})
 	model.RegisterCommand(dialog.Command{
 		ID:          "export",
+		Group:       "Session",
 		Title:       "Export Session",
 		Description: "Export the conversation to Markdown and open it in your editor",
 		Handler: func(cmd dialog.Command) tea.Cmd {
@@ -2065,6 +2072,7 @@ If there are Cursor rules (in .cursor/rules/ or .cursorrules) or Copilot rules (
 
 	model.RegisterCommand(dialog.Command{
 		ID:          "timeline",
+		Group:       "Session",
 		Title:       "Jump to Message",
 		Description: "Pick a user message of this session and jump to it",
 		Handler: func(cmd dialog.Command) tea.Cmd {
@@ -2074,6 +2082,7 @@ If there are Cursor rules (in .cursor/rules/ or .cursorrules) or Copilot rules (
 
 	model.RegisterCommand(dialog.Command{
 		ID:          "session_copy",
+		Group:       "Session",
 		Title:       "Copy Session Transcript",
 		Description: "Copy the whole conversation as Markdown to the clipboard",
 		Handler: func(cmd dialog.Command) tea.Cmd {
@@ -2083,6 +2092,7 @@ If there are Cursor rules (in .cursor/rules/ or .cursorrules) or Copilot rules (
 
 	model.RegisterCommand(dialog.Command{
 		ID:          "fork",
+		Group:       "Session",
 		Title:       "Fork Session",
 		Description: "Copy this session (or up to a message) into a new one",
 		Handler: func(cmd dialog.Command) tea.Cmd {
@@ -2092,6 +2102,7 @@ If there are Cursor rules (in .cursor/rules/ or .cursorrules) or Copilot rules (
 
 	model.RegisterCommand(dialog.Command{
 		ID:          "prompt_stash",
+		Group:       "Prompt",
 		Title:       "Stash prompt",
 		Description: "Save the current prompt into the stash and clear the composer",
 		Handler: func(cmd dialog.Command) tea.Cmd {
@@ -2101,6 +2112,7 @@ If there are Cursor rules (in .cursor/rules/ or .cursorrules) or Copilot rules (
 
 	model.RegisterCommand(dialog.Command{
 		ID:          "prompt_stash_pop",
+		Group:       "Prompt",
 		Title:       "Stash pop",
 		Description: "Restore the most recently stashed prompt",
 		Handler: func(cmd dialog.Command) tea.Cmd {
@@ -2110,6 +2122,7 @@ If there are Cursor rules (in .cursor/rules/ or .cursorrules) or Copilot rules (
 
 	model.RegisterCommand(dialog.Command{
 		ID:          "prompt_stash_list",
+		Group:       "Prompt",
 		Title:       "Stash list",
 		Description: "List the stashed prompts and pick one to restore",
 		Handler: func(cmd dialog.Command) tea.Cmd {
@@ -2119,6 +2132,7 @@ If there are Cursor rules (in .cursor/rules/ or .cursorrules) or Copilot rules (
 
 	model.RegisterCommand(dialog.Command{
 		ID:          "new",
+		Group:       "Session",
 		Title:       "New Session",
 		Description: "Start a new session",
 		Aliases:     []string{"clear"},
@@ -2128,6 +2142,7 @@ If there are Cursor rules (in .cursor/rules/ or .cursorrules) or Copilot rules (
 	})
 	model.RegisterCommand(dialog.Command{
 		ID:          "sessions",
+		Group:       "Session",
 		Title:       "Switch Session",
 		Description: "List and switch between sessions",
 		Aliases:     []string{"resume", "continue"},
@@ -2137,6 +2152,7 @@ If there are Cursor rules (in .cursor/rules/ or .cursorrules) or Copilot rules (
 	})
 	model.RegisterCommand(dialog.Command{
 		ID:          "models",
+		Group:       "Agent",
 		Title:       "Select Model",
 		Description: "List the available models",
 		Handler: func(cmd dialog.Command) tea.Cmd {
@@ -2145,6 +2161,7 @@ If there are Cursor rules (in .cursor/rules/ or .cursorrules) or Copilot rules (
 	})
 	model.RegisterCommand(dialog.Command{
 		ID:          "themes",
+		Group:       "System",
 		Title:       "Select Theme",
 		Description: "List the available themes",
 		Handler: func(cmd dialog.Command) tea.Cmd {
@@ -2153,6 +2170,7 @@ If there are Cursor rules (in .cursor/rules/ or .cursorrules) or Copilot rules (
 	})
 	model.RegisterCommand(dialog.Command{
 		ID:          "help",
+		Group:       "System",
 		Title:       "Show Help",
 		Description: "Show the keyboard shortcuts",
 		Handler: func(cmd dialog.Command) tea.Cmd {
@@ -2161,6 +2179,7 @@ If there are Cursor rules (in .cursor/rules/ or .cursorrules) or Copilot rules (
 	})
 	model.RegisterCommand(dialog.Command{
 		ID:          "editor",
+		Group:       "Prompt",
 		Title:       "External Editor",
 		Description: "Compose the message in your $EDITOR",
 		Handler: func(cmd dialog.Command) tea.Cmd {
@@ -2169,6 +2188,7 @@ If there are Cursor rules (in .cursor/rules/ or .cursorrules) or Copilot rules (
 	})
 	model.RegisterCommand(dialog.Command{
 		ID:          "thinking",
+		Group:       "Session",
 		Title:       "Toggle Thinking",
 		Description: "Show or hide the reasoning blocks in the conversation",
 		Handler: func(cmd dialog.Command) tea.Cmd {
@@ -2177,6 +2197,7 @@ If there are Cursor rules (in .cursor/rules/ or .cursorrules) or Copilot rules (
 	})
 	model.RegisterCommand(dialog.Command{
 		ID:          "details",
+		Group:       "Session",
 		Title:       "Toggle Tool Details",
 		Description: "Show or hide tool execution details in the conversation",
 		Handler: func(cmd dialog.Command) tea.Cmd {
@@ -2185,6 +2206,7 @@ If there are Cursor rules (in .cursor/rules/ or .cursorrules) or Copilot rules (
 	})
 	model.RegisterCommand(dialog.Command{
 		ID:          "undo",
+		Group:       "Session",
 		Title:       "Undo Message",
 		Description: "Remove the last user message and its responses (keeps file changes)",
 		Handler: func(cmd dialog.Command) tea.Cmd {
@@ -2193,6 +2215,7 @@ If there are Cursor rules (in .cursor/rules/ or .cursorrules) or Copilot rules (
 	})
 	model.RegisterCommand(dialog.Command{
 		ID:          "redo",
+		Group:       "Session",
 		Title:       "Redo Message",
 		Description: "Restore the message removed by the last undo",
 		Handler: func(cmd dialog.Command) tea.Cmd {
@@ -2202,6 +2225,7 @@ If there are Cursor rules (in .cursor/rules/ or .cursorrules) or Copilot rules (
 
 	model.RegisterCommand(dialog.Command{
 		ID:          "exit",
+		Group:       "System",
 		Title:       "Exit OpenCode",
 		Description: "Leave the TUI (asks for confirmation)",
 		Aliases:     []string{"quit", "q"},
@@ -2212,6 +2236,7 @@ If there are Cursor rules (in .cursor/rules/ or .cursorrules) or Copilot rules (
 
 	model.RegisterCommand(dialog.Command{
 		ID:          "plugins",
+		Group:       "System",
 		Title:       "Plugins",
 		Description: "List the loaded plugins, their hooks and tools",
 		Handler: func(cmd dialog.Command) tea.Cmd {
@@ -2220,6 +2245,7 @@ If there are Cursor rules (in .cursor/rules/ or .cursorrules) or Copilot rules (
 	})
 	model.RegisterCommand(dialog.Command{
 		ID:          "connect",
+		Group:       "Integration",
 		Title:       "Connect Provider",
 		Description: "Store an API key for a provider (e.g. OpenCode Zen)",
 		Handler: func(cmd dialog.Command) tea.Cmd {

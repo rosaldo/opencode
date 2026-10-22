@@ -24,8 +24,15 @@ type Command struct {
 	Description string
 	// Aliases are extra slash names accepted for this command (Spec 09h).
 	Aliases []string
+	// Group is the section header shown above the command in the palette
+	// (Spec 09s), e.g. "Session" or "System". Empty means no header.
+	Group   string
 	Handler func(cmd Command) tea.Cmd
 }
+
+// GroupTitle starts a new palette section header when it differs from the
+// previous row's group (Spec 09s).
+func (ci Command) GroupTitle() string { return ci.Group }
 
 func (ci Command) Render(selected bool, width int) string {
 	t := theme.CurrentTheme()
@@ -173,6 +180,8 @@ func (c *commandDialogCmp) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (c *commandDialogCmp) applyFilter() {
 	query := strings.TrimSpace(c.input.Value())
 	if query == "" {
+		// The unfiltered list is grouped; a query flattens it (Spec 09s).
+		c.listView.SetGroupHeaders(true)
 		c.listView.SetItems(c.all)
 		return
 	}
@@ -188,6 +197,7 @@ func (c *commandDialogCmp) applyFilter() {
 	for _, r := range ranks {
 		items = append(items, c.all[r.OriginalIndex])
 	}
+	c.listView.SetGroupHeaders(false)
 	c.listView.SetItems(items)
 }
 
@@ -268,8 +278,33 @@ func (c *commandDialogCmp) SetCommands(commands []Command) {
 	c.mode = commandModeList
 	c.input.SetValue("")
 	c.input.Blur()
-	c.all = commands
-	c.listView.SetItems(commands)
+	// Commands are laid out group by group — first appearance order, relative
+	// registration order inside each group — as in the TS palette (Spec 09s).
+	c.all = groupCommands(commands)
+	c.listView.SetGroupHeaders(true)
+	c.listView.SetItems(c.all)
+}
+
+// groupCommands stably buckets commands by Group: every group is contiguous,
+// groups keep the order they first appear in, and commands keep their relative
+// order inside the bucket (Spec 09s).
+func groupCommands(commands []Command) []Command {
+	if len(commands) <= 1 {
+		return commands
+	}
+	order := make([]string, 0, len(commands))
+	buckets := make(map[string][]Command, len(commands))
+	for _, cmd := range commands {
+		if _, seen := buckets[cmd.Group]; !seen {
+			order = append(order, cmd.Group)
+		}
+		buckets[cmd.Group] = append(buckets[cmd.Group], cmd)
+	}
+	out := make([]Command, 0, len(commands))
+	for _, group := range order {
+		out = append(out, buckets[group]...)
+	}
+	return out
 }
 
 // NewCommandDialogCmp creates a new command selection dialog

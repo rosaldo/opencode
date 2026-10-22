@@ -34,6 +34,9 @@ type SimpleList[T SimpleListItem] interface {
 	GetSelectedItem() (item T, idx int)
 	SetItems(items []T)
 	GetItems() []T
+	// SetGroupHeaders toggles the non-selectable group headers rendered above
+	// the first row of each group (Spec 09s). Off by default.
+	SetGroupHeaders(show bool)
 }
 
 type simpleListCmp[T SimpleListItem] struct {
@@ -46,6 +49,7 @@ type simpleListCmp[T SimpleListItem] struct {
 	width               int
 	height              int
 	zones               util.ZoneSet
+	showGroupHeaders    bool
 }
 
 type simpleListKeyMap struct {
@@ -137,8 +141,44 @@ func (c *simpleListCmp[T]) GetItems() []T {
 	return c.items
 }
 
+func (c *simpleListCmp[T]) SetGroupHeaders(show bool) {
+	c.showGroupHeaders = show
+}
+
 func (c *simpleListCmp[T]) SetMaxWidth(width int) {
 	c.maxWidth = width
+}
+
+// groupTitle returns the header text shown above item i, or "" when no header
+// starts there (headers belong to items whose group differs from the previous
+// row; Spec 09s).
+func (c *simpleListCmp[T]) groupTitle(i int) string {
+	if !c.showGroupHeaders || i < 0 || i >= len(c.items) {
+		return ""
+	}
+	grouper, ok := any(c.items[i]).(interface{ GroupTitle() string })
+	if !ok {
+		return ""
+	}
+	title := grouper.GroupTitle()
+	if title == "" {
+		return ""
+	}
+	if i > 0 {
+		prev, ok := any(c.items[i-1]).(interface{ GroupTitle() string })
+		if ok && prev.GroupTitle() == title {
+			return ""
+		}
+	}
+	return title
+}
+
+// lineCount is how many rendered lines item i occupies (row plus header).
+func (c *simpleListCmp[T]) lineCount(i int) int {
+	if c.groupTitle(i) != "" {
+		return 2
+	}
+	return 1
 }
 
 func (c *simpleListCmp[T]) View() string {
@@ -147,8 +187,6 @@ func (c *simpleListCmp[T]) View() string {
 
 	items := c.items
 	maxWidth := c.maxWidth
-	maxVisibleItems := min(c.maxVisibleItems, len(items))
-	startIdx := 0
 
 	if len(items) <= 0 {
 		return baseStyle.
@@ -158,29 +196,92 @@ func (c *simpleListCmp[T]) View() string {
 			Render(c.fallbackMsg)
 	}
 
-	if len(items) > maxVisibleItems {
-		halfVisible := maxVisibleItems / 2
-		if c.selectedIdx >= halfVisible && c.selectedIdx < len(items)-halfVisible {
-			startIdx = c.selectedIdx - halfVisible
-		} else if c.selectedIdx >= len(items)-halfVisible {
-			startIdx = len(items) - maxVisibleItems
-		}
-	}
+	startIdx, endIdx := c.window()
 
-	endIdx := min(startIdx+maxVisibleItems, len(items))
-
-	listItems := make([]string, 0, maxVisibleItems)
+	listItems := make([]string, 0, endIdx-startIdx)
 	c.zones.Reset()
 
 	for i := startIdx; i < endIdx; i++ {
+		// Group headers are plain lines: they carry no zone, so a click on
+		// one is swallowed instead of activating a row (Spec 09s).
+		if title := c.groupTitle(i); title != "" {
+			listItems = append(listItems, baseStyle.
+				Width(maxWidth).
+				Padding(0, 1).
+				Foreground(t.Primary()).
+				Bold(true).
+				Render(title))
+		}
 		item := items[i]
-		title := item.Render(i == c.selectedIdx, maxWidth)
+		row := item.Render(i == c.selectedIdx, maxWidth)
 		// The zone carries the absolute index so a click can be mapped back
 		// even while the list is windowed (Spec 09n).
-		listItems = append(listItems, c.zones.Mark(ListZoneID(listZonePrefix, i), title))
+		listItems = append(listItems, c.zones.Mark(ListZoneID(listZonePrefix, i), row))
 	}
 
 	return lipgloss.JoinVertical(lipgloss.Left, listItems...)
+}
+
+// window computes the [start, end) slice of items to render. Without group
+// headers it keeps the classic item-count window centered on the selection;
+// with headers the budget counts rendered lines (row + header) so the list
+// never grows past maxVisibleItems lines (Spec 09s).
+func (c *simpleListCmp[T]) window() (int, int) {
+	items := c.items
+	maxVisibleItems := c.maxVisibleItems
+
+	if !c.showGroupHeaders {
+		startIdx := 0
+		if len(items) > maxVisibleItems {
+			halfVisible := maxVisibleItems / 2
+			if c.selectedIdx >= halfVisible && c.selectedIdx < len(items)-halfVisible {
+				startIdx = c.selectedIdx - halfVisible
+			} else if c.selectedIdx >= len(items)-halfVisible {
+				startIdx = len(items) - maxVisibleItems
+			}
+		}
+		return startIdx, min(startIdx+maxVisibleItems, len(items))
+	}
+
+	total := 0
+	for i := range items {
+		total += c.lineCount(i)
+	}
+	if total <= maxVisibleItems {
+		return 0, len(items)
+	}
+
+	// Grow a window around the selection, alternating sides, while the line
+	// budget allows it.
+	sel := c.selectedIdx
+	start, end := sel, sel+1
+	used := c.lineCount(sel)
+	up, down := sel-1, sel+1
+	growDown := false
+	for used < maxVisibleItems && (up >= 0 || down < len(items)) {
+		added := false
+		if down < len(items) && (growDown || up < 0) {
+			if n := c.lineCount(down); used+n <= maxVisibleItems {
+				used += n
+				end = down + 1
+				down++
+				added = true
+			}
+		}
+		if !added && up >= 0 {
+			if n := c.lineCount(up); used+n <= maxVisibleItems {
+				used += n
+				start = up
+				up--
+				added = true
+			}
+		}
+		if !added {
+			break
+		}
+		growDown = !growDown
+	}
+	return start, end
 }
 
 // ListZoneID builds the mouse zone id for the row at idx.

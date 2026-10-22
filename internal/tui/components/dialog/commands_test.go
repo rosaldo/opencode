@@ -1,6 +1,7 @@
 package dialog
 
 import (
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -175,5 +176,63 @@ func TestCommandDialogListActivatedMsg(t *testing.T) {
 	empty.SetCommands(nil)
 	if _, cmd := empty.Update(utilComponents.ListActivatedMsg{Index: 0}); cmd != nil {
 		t.Error("no command should run with an empty list")
+	}
+}
+
+func TestGroupCommandsBucketsByFirstAppearance(t *testing.T) {
+	cmds := []Command{
+		{ID: "a", Group: "System"},
+		{ID: "b", Group: "Session"},
+		{ID: "c", Group: "System"},
+		{ID: "d", Group: "Session"},
+		{ID: "e", Group: "Prompt"},
+	}
+
+	got := groupCommands(cmds)
+	want := []string{"a", "c", "b", "d", "e"}
+	if len(got) != len(want) {
+		t.Fatalf("got %d commands, want %d", len(got), len(want))
+	}
+	for i, id := range want {
+		if got[i].ID != id {
+			t.Errorf("item[%d] = %q, want %q", i, got[i].ID, id)
+		}
+	}
+
+	// A single command is returned untouched.
+	if one := groupCommands(cmds[:1]); one[0].ID != "a" {
+		t.Errorf("single command = %q, want a", one[0].ID)
+	}
+}
+
+func TestCommandDialogGroupHeadersToggleWithSearch(t *testing.T) {
+	c := newTestCommandDialog(t)
+	c.SetCommands([]Command{
+		{ID: "alpha", Title: "Alpha", Group: "GOne"},
+		{ID: "beta", Title: "Beta", Group: "GTwo"},
+	})
+
+	view := c.View()
+	for _, want := range []string{"GOne", "GTwo"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("grouped view is missing header %q:\n%s", want, view)
+		}
+	}
+
+	// A query flattens the list: no headers while filtering (Spec 09s).
+	c.Update(keyRune('/'))
+	for _, r := range "alpha" {
+		c.Update(keyRune(r))
+	}
+	view = c.View()
+	if strings.Contains(view, "GOne") || strings.Contains(view, "GTwo") {
+		t.Errorf("filtered view must not render group headers:\n%s", view)
+	}
+
+	// Clearing the query brings the grouped layout back.
+	c.input.SetValue("")
+	c.applyFilter()
+	if view = c.View(); !strings.Contains(view, "GOne") {
+		t.Errorf("empty query must restore group headers:\n%s", view)
 	}
 }

@@ -53,7 +53,7 @@ geração v2** (`https://opencode.ai/config.json`), não a 1.19.3.
 | 6 | [06-providers.md](06-providers.md) | Providers v2: `providers.<p>.models/settings` (baseURL/headers), `model`/`small_model`, catálogo | Verificado | 11 |
 | 7 | [07-permissions.md](07-permissions.md) | `permissions` (array por recurso) + `policies`, `external_directory`, gating ampliado | Verificado | 11 |
 | 8 | [08-mcp.md](08-mcp.md) | `mcp.servers` local/remote, HTTP/streamable, resources/prompts, OAuth, ciclo de vida | Verificado | 11 |
-| 9 | [09-tui.md](09-tui.md) | TUI v2: keybinds (`tui.json`/`cli.json`), mouse/scroll, sessões, paste | 09a/09b Verificado; 09c–09r feito | 11, 07 |
+| 9 | [09-tui.md](09-tui.md) | TUI v2: keybinds (`tui.json`/`cli.json`), mouse/scroll, sessões, paste | 09a/09b Verificado; 09c–09s feito | 11, 07 |
 | 10 | [10-plugins.md](10-plugins.md) | `plugins`: loader, protocolo (stdio), hooks, custom tools, UI | 10a/10b/10c Verificado | 11, 08 |
 | 11 | [11-config.md](11-config.md) | **Config v2 (base)**: `opencode.json(c)`, `$schema`, `{env:}`/`{file:}`, chaves v2, schema gerador | Verificado | — |
 | 12 | [12-opencode-ai.md](12-opencode-ai.md) | serve/share/web, ACP, zen (/connect, default grátis) | 12a/12b/12c/12d Verificado | 06, 11, 09 |

@@ -6,6 +6,19 @@ import (
 	"github.com/opencode-ai/opencode/internal/tui/components/dialog"
 )
 
+func TestRegisterCommandDefaultsGroupToCustom(t *testing.T) {
+	a := &appModel{}
+	a.RegisterCommand(dialog.Command{ID: "custom", Title: "Custom"})
+	a.RegisterCommand(dialog.Command{ID: "grouped", Title: "Grouped", Group: "Session"})
+
+	if a.commands[0].Group != "Custom" {
+		t.Errorf("group = %q, want Custom", a.commands[0].Group)
+	}
+	if a.commands[1].Group != "Session" {
+		t.Errorf("group = %q, want Session", a.commands[1].Group)
+	}
+}
+
 func TestFilterCommands(t *testing.T) {
 	cmds := []dialog.Command{
 		{ID: "new", Title: "New Session"},

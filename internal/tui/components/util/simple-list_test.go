@@ -1,6 +1,7 @@
 package utilComponents
 
 import (
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -10,6 +11,12 @@ import (
 type testItem struct{ name string }
 
 func (i testItem) Render(_ bool, _ int) string { return i.name }
+
+type groupedItem struct{ name, group string }
+
+func (i groupedItem) Render(_ bool, _ int) string { return i.name }
+
+func (i groupedItem) GroupTitle() string { return i.group }
 
 func TestListZoneID(t *testing.T) {
 	if got := ListZoneID("pfx:", 7); got != "pfx:7" {
@@ -54,5 +61,83 @@ func TestSimpleListClickRow(t *testing.T) {
 	}
 	if c.selectedIdx != 2 {
 		t.Errorf("selectedIdx = %d, want selection unchanged", c.selectedIdx)
+	}
+}
+
+func groupedFixture() (*simpleListCmp[groupedItem], []groupedItem) {
+	items := []groupedItem{
+		{"a", "G1"},
+		{"b", "G1"},
+		{"c", "G2"},
+		{"d", "G3"},
+		{"e", "G3"},
+	}
+	list := NewSimpleList(items, 10, "none", false)
+	return list.(*simpleListCmp[groupedItem]), items
+}
+
+func TestSimpleListGroupHeaders(t *testing.T) {
+	c, _ := groupedFixture()
+
+	// Headers off by default: one line per row.
+	if lines := strings.Split(c.View(), "\n"); len(lines) != 5 {
+		t.Fatalf("ungrouped lines = %d, want 5:\n%q", len(lines), lines)
+	}
+
+	c.SetGroupHeaders(true)
+	lines := strings.Split(c.View(), "\n")
+	want := []string{"G1", "a", "b", "G2", "c", "G3", "d", "e"}
+	if len(lines) != len(want) {
+		t.Fatalf("lines = %d, want %d:\n%q", len(lines), len(want), lines)
+	}
+	for i, w := range want {
+		if !strings.Contains(lines[i], w) {
+			t.Errorf("line[%d] = %q, want it to contain %q", i, lines[i], w)
+		}
+	}
+}
+
+func TestSimpleListGroupHeaderLineBudget(t *testing.T) {
+	items := []groupedItem{
+		{"a", "G1"},
+		{"b", "G2"},
+		{"c", "G1"},
+		{"d", "G2"},
+		{"e", "G1"},
+		{"f", "G2"},
+	}
+	list := NewSimpleList(items, 4, "none", false)
+	c := list.(*simpleListCmp[groupedItem])
+	c.SetGroupHeaders(true)
+
+	// Every row starts a group, so each item costs two lines: the budget of
+	// four lines must cap the render at four lines (Spec 09s).
+	c.selectedIdx = 0
+	if lines := strings.Split(c.View(), "\n"); len(lines) > 4 {
+		t.Fatalf("lines = %d, want <= 4:\n%q", len(lines), lines)
+	}
+	if view := c.View(); !strings.Contains(view, "a") {
+		t.Errorf("window must keep the selection visible:\n%s", view)
+	}
+
+	// Selection in the middle: still within the budget and still visible.
+	c.selectedIdx = 3
+	if lines := strings.Split(c.View(), "\n"); len(lines) > 4 {
+		t.Fatalf("lines = %d, want <= 4:\n%q", len(lines), lines)
+	}
+	if view := c.View(); !strings.Contains(view, "d") {
+		t.Errorf("window must keep the selection visible:\n%s", view)
+	}
+}
+
+func TestSimpleListGroupHeaderNotZoned(t *testing.T) {
+	c, _ := groupedFixture()
+	c.SetGroupHeaders(true)
+	c.View()
+
+	// The view renders 8 lines (3 headers + 5 rows), but only the rows get
+	// zones: a click on a header resolves to nothing (Spec 09s).
+	if got := c.zones.Len(); got != 5 {
+		t.Errorf("zoned ids = %d, want 5 row zones", got)
 	}
 }

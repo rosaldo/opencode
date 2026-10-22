@@ -345,14 +345,36 @@ Fechar lacunas da TUI: **keybinds configuráveis**, suporte a **mouse/scroll**, 
       `showAgentDialog`/`showPluginsDialog` antes do fallback da página.
     - Testes: `mouse_test.go` (`TestAgentDialogClickRow`, lista vazia, engolir
       clique/motion, `TestPluginsDialogConsumesMouse` com Esc preservado).
+  - **Agrupamento do palette por contexto (09s)** — feito:
+    - `dialog.Command` ganhou `Group` + `GroupTitle()`; os 22 built-ins recebem grupos no
+      `New()` seguindo o vocabulário do TS (`Session`, `Prompt`, `Agent`, `System`,
+      `Integration` — verificados em `app.tsx`/`session/index.tsx`/`prompt/index.tsx`);
+      `RegisterCommand` promove grupo vazio para `"Custom"` (comandos do usuário).
+    - `dialog.groupCommands`: buckets estáveis por grupo — a ordem é a primeira aparição de
+      cada grupo e a ordem de registro é preservada dentro do bucket (o mesmo resultado do
+      `groupBy` do TS). Chamado no `SetCommands`.
+    - `SimpleList` ganhou `SetGroupHeaders(bool)` (opt-in, default off) + detecção de
+      `interface{ GroupTitle() string }`: sem busca, o palette renderiza um cabeçalho por
+      grupo (linha própria, `Primary`+bold, **sem zona** — clique no cabeçalho é engolido);
+      com uma busca a lista achata sem cabeçalhos (igual ao `flatten` do TS). A janela deixa
+      de contar itens e passa a contar **linhas** (linha + cabeçalho) quando os cabeçalhos
+      estão ligados, para não estourar `maxVisibleItems` linhas.
+    - Testes: `dialog/commands_test.go` (buckets estáveis, cabeçalhos ligados/desligados
+      pela busca), `simple-list_test.go` (render com/sem header, orçamento de linhas com
+      seleção no início e no meio, headers sem zonas), `internal/tui/commands_test.go`
+      (`Custom` por omissão).
+    - Adaptações conscientes: sem linha em branco entre grupos (o TS usa gap de 1 linha) e
+      sem footer de categoria na linha filtrada; a ordem dos grupos segue a primeira
+      aparição no registro nosso (o TS segue a ordem do Keymap).
 
 - Pendências conscientes: codificação **sixel** de fato (hoje o protocolo sixel detectado usa o
   fallback half-block, que funciona em qualquer terminal truecolor); o
   diálogo de timeline do TS também
   abre um "Message Actions" (Jump to / Revert / Copy / Fork) na seleção — aqui Enter pula
   direto até que Revert exista (Fork já existe via `/fork`/`session_fork`); keybind
-  `session_move` ainda sem ação; agrupamento
-  do palette por contexto; `/undo`/`/redo` **não** fazem rollback de arquivos via git como no TS
+  `session_move` ainda sem ação (no TS abre o menu de working directory até o "Move session
+  to worktree" — exige diretório **por sessão** + worktrees, decisão arquitetural pendente);
+  `/undo`/`/redo` **não** fazem rollback de arquivos via git como no TS
   nem reexecutam o agent (decisão consciente de escopo, Spec 09k).
 
 ## Riscos
