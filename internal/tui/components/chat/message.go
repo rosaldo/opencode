@@ -33,6 +33,7 @@ const (
 	userMessageType uiMessageType = iota
 	assistantMessageType
 	toolMessageType
+	thinkingMessageType
 
 	maxResultHeight = 10
 )
@@ -43,6 +44,17 @@ type uiMessage struct {
 	position    int
 	height      int
 	content     string
+	// zoneID overrides the mouse zone id ("msg:"+ID by default) so a thinking
+	// block can be toggled independently of its message (Spec 09e).
+	zoneID string
+}
+
+// zone returns the bubblezone id used for this uiMessage.
+func (u uiMessage) zone() string {
+	if u.zoneID != "" {
+		return u.zoneID
+	}
+	return "msg:" + u.ID
 }
 
 func toMarkdown(content string, focused bool, width int) string {
@@ -84,6 +96,37 @@ func renderMessage(msg string, isUser bool, isFocused bool, width int, info ...s
 	)
 
 	return rendered
+}
+
+// renderThinkingBlock draws the reasoning part of an assistant message as its
+// own collapsible block (Spec 09e). Collapsed it is a single summary line;
+// expanded it shows the reasoning dimmed below the header, so it reads apart
+// from the answer.
+func renderThinkingBlock(thinking string, expanded bool, width int) string {
+	t := theme.CurrentTheme()
+	style := styles.BaseStyle().
+		Width(width - 1).
+		BorderLeft(true).
+		BorderStyle(lipgloss.ThickBorder()).
+		BorderForeground(t.TextMuted()).
+		Foreground(t.TextMuted())
+
+	trimmed := strings.TrimRight(thinking, "\n")
+	lines := 0
+	if strings.TrimSpace(trimmed) != "" {
+		lines = strings.Count(trimmed, "\n") + 1
+	}
+
+	indicator := "▸"
+	if expanded {
+		indicator = "▾"
+	}
+	parts := []string{fmt.Sprintf("%s Thinking · %d lines", indicator, lines)}
+	if expanded && lines > 0 {
+		body := styles.ForceReplaceBackgroundWithLipgloss(toMarkdown(trimmed, false, width), t.Background())
+		parts = append(parts, strings.TrimSuffix(body, "\n"))
+	}
+	return style.Render(lipgloss.JoinVertical(lipgloss.Left, parts...))
 }
 
 func renderUserMessage(msg message.Message, isFocused bool, width int, position int) uiMessage {
@@ -196,13 +239,13 @@ func renderAssistantMessage(
 	allMessages []message.Message, // we need this to get tool results and the user message
 	messagesService message.Service, // We need this to get the task tool messages
 	focusedUIMessageId string,
+	thinkingExpanded bool,
 	isSummary bool,
 	width int,
 	position int,
 ) []uiMessage {
 	messages := []uiMessage{}
 	content := msg.Content().String()
-	thinking := msg.IsThinking()
 	thinkingContent := msg.ReasoningContent().Thinking
 	finished := msg.IsFinished()
 	finishData := msg.FinishPart()
@@ -241,6 +284,21 @@ func renderAssistantMessage(
 			)
 		}
 	}
+	// The reasoning block is rendered on its own, above the answer, so it can be
+	// collapsed independently (Spec 09e).
+	if thinkingContent != "" {
+		thinkingMsg := uiMessage{
+			ID:          msg.ID,
+			messageType: thinkingMessageType,
+			position:    position,
+			zoneID:      "think:" + msg.ID,
+			content:     renderThinkingBlock(thinkingContent, thinkingExpanded, width),
+		}
+		thinkingMsg.height = lipgloss.Height(thinkingMsg.content)
+		messages = append(messages, thinkingMsg)
+		position += thinkingMsg.height
+		position++ // for the space
+	}
 	if content != "" || (finished && finishData.Reason == message.FinishReasonEndTurn) {
 		if content == "" {
 			content = "*Finished without output*"
@@ -250,18 +308,16 @@ func renderAssistantMessage(
 		}
 
 		content = renderMessage(content, false, true, width, info...)
-		messages = append(messages, uiMessage{
+		assistantMsg := uiMessage{
 			ID:          msg.ID,
 			messageType: assistantMessageType,
 			position:    position,
 			height:      lipgloss.Height(content),
 			content:     content,
-		})
-		position += messages[0].height
+		}
+		messages = append(messages, assistantMsg)
+		position += assistantMsg.height
 		position++ // for the space
-	} else if thinking && thinkingContent != "" {
-		// Render the thinking content
-		content = renderMessage(thinkingContent, false, msg.ID == focusedUIMessageId, width)
 	}
 
 	for i, toolCall := range msg.ToolCalls() {

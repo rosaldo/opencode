@@ -41,7 +41,6 @@ type keyMap struct {
 }
 
 type startCompactSessionMsg struct{}
-type toggleSidebarMsg struct{}
 
 const (
 	quitKey = "q"
@@ -159,15 +158,124 @@ func applyKeybinds() {
 		Models:         binding(KeybindModelList, "model selection", []string{"ctrl+o"}),
 		SwitchTheme:    binding(KeybindThemeList, "switch theme", []string{"ctrl+t"}),
 	}
-	// leader binding from resolved keybinds
-	if len(resolvedKeybinds.Keys(KeybindSessionNew)) > 0 {
-		keysList := resolvedKeybinds.Keys(KeybindSessionNew)
-		if len(keysList) > 0 {
-			keys.Leader = key.NewBinding(key.WithKeys(keysList[0]))
-		}
-	} else if resolvedKeybinds.Leader != "" {
-		keys.Leader = key.NewBinding(key.WithKeys(resolvedKeybinds.Leader))
+	// The leader prefix always comes from the configured "leader" keybind, and
+	// the actions it prefixes are resolved from their own keybinds (Spec 09d).
+	if leader := resolvedKeybinds.Leader; leader != "" {
+		keys.Leader = key.NewBinding(key.WithKeys(leader), key.WithHelp(leader, "leader"))
 	}
+	applyLeaderBindings()
+}
+
+// leaderAction is a TUI action addressable through the <leader> sequence
+// (Spec 09d).
+type leaderAction int
+
+const (
+	leaderNewSession leaderAction = iota
+	leaderRenameSession
+	leaderDeleteSession
+	leaderCompactSession
+	leaderToggleSidebar
+)
+
+// leaderSuffixes maps the keystroke pressed after the leader to its action;
+// leaderDirect holds the same actions when they are bound without the leader.
+// Both are rebuilt from the configured keybinds by applyLeaderBindings.
+var (
+	leaderSuffixes = map[string]leaderAction{}
+	leaderDirect   = map[leaderAction]key.Binding{}
+)
+
+// applyLeaderBindings resolves the leader actions: a binding shaped
+// ["<leader>x"] becomes a suffix, anything else becomes a direct key. Ids
+// disabled with "none" leave both maps without an entry.
+func applyLeaderBindings() {
+	leaderSuffixes = make(map[string]leaderAction, 5)
+	leaderDirect = make(map[leaderAction]key.Binding, 5)
+	for action, id := range map[leaderAction]KeybindID{
+		leaderNewSession:     KeybindSessionNew,
+		leaderRenameSession:  KeybindSessionRename,
+		leaderDeleteSession:  KeybindSessionDelete,
+		leaderCompactSession: KeybindSessionCompact,
+		leaderToggleSidebar:  KeybindSidebarToggle,
+	} {
+		bound := resolvedKeybinds.Keys(id)
+		if len(bound) == 0 {
+			continue
+		}
+		if len(bound) == 2 && bound[0] == resolvedKeybinds.Leader {
+			leaderSuffixes[bound[1]] = action
+			continue
+		}
+		leaderDirect[action] = key.NewBinding(
+			key.WithKeys(bound...),
+			key.WithHelp(bound[0], string(id)),
+		)
+	}
+}
+
+// leaderDirectAction reports the action bound directly, i.e. without the leader.
+func leaderDirectAction(msg tea.KeyMsg) (leaderAction, bool) {
+	for action, binding := range leaderDirect {
+		if key.Matches(msg, binding) {
+			return action, true
+		}
+	}
+	return leaderNewSession, false
+}
+
+// inChatContext reports whether the chat keybinds own the keyboard: the chat
+// page is up and no dialog is modal over it (Spec 09d).
+func (a appModel) inChatContext() bool {
+	return a.currentPage == page.ChatPage &&
+		!a.showQuit && !a.showPermissions && !a.showCommandDialog &&
+		!a.showSessionDialog && !a.showModelDialog && !a.showAgentDialog &&
+		!a.showThemeDialog && !a.showFilepicker && !a.showHelp &&
+		!a.showPluginsDialog && !a.showConnectDialog &&
+		!a.showMultiArgumentsDialog
+}
+
+// runLeaderAction executes one leader action (Spec 09d).
+func (a appModel) runLeaderAction(action leaderAction) (appModel, tea.Cmd) {
+	switch action {
+	case leaderNewSession:
+		return a.updateChatPage(page.NewSessionMsg{})
+	case leaderToggleSidebar:
+		return a.updateChatPage(page.ToggleSidebarMsg{})
+	case leaderRenameSession, leaderDeleteSession:
+		// The session dialog owns search, rename (r) and delete (d + y); it
+		// opens with the current session preselected.
+		return a.openSessionDialogFor(a.selectedSession)
+	case leaderCompactSession:
+		return a, util.CmdHandler(startCompactSessionMsg{})
+	}
+	return a, nil
+}
+
+// updateChatPage forwards a message to the chat page, keeping the returned model.
+func (a appModel) updateChatPage(msg tea.Msg) (appModel, tea.Cmd) {
+	m, cmd := a.pages[page.ChatPage].Update(msg)
+	a.pages[page.ChatPage] = m
+	return a, cmd
+}
+
+// openSessionDialogFor loads every session into the session dialog, preselecting
+// current so <leader>r and <leader>d act on the session in view (Spec 09d).
+func (a appModel) openSessionDialogFor(current session.Session) (appModel, tea.Cmd) {
+	if a.app == nil {
+		return a, util.ReportWarn("No sessions available")
+	}
+	sessions, err := a.app.Sessions.List(context.Background())
+	if err != nil {
+		return a, util.ReportError(err)
+	}
+	if len(sessions) == 0 {
+		return a, util.ReportWarn("No sessions available")
+	}
+	a.sessionDialog.SetSessions(sessions)
+	a.sessionDialog.SetSelectedSession(current.ID)
+	a.showSessionDialog = true
+	return a, nil
 }
 
 var returnKey = key.NewBinding(
@@ -443,13 +551,10 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case chat.RunSlashCommandMsg:
 		return a, a.openCommandDialog(msg.Name)
 
-	case toggleSidebarMsg:
-		if a.currentPage == page.ChatPage {
-			p2 := a.pages[page.ChatPage]
-			_, cmd := p2.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{}})
-			return a, cmd
-		}
-		return a, nil
+	// A fresh session clears the app-level selection so <leader>c (compact)
+	// reports "no active session" instead of summarising the previous one.
+	case chat.SessionClearedMsg:
+		a.selectedSession = session.Session{}
 
 	case startCompactSessionMsg:
 		// Start compacting the current session
@@ -659,53 +764,31 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, cmd
 		}
 
-		if a.currentPage == page.ChatPage && !a.showQuit && !a.showPermissions && !a.showCommandDialog && !a.showSessionDialog && !a.showModelDialog && !a.showAgentDialog && !a.showThemeDialog && !a.showFilepicker && !a.showHelp && !a.showPluginsDialog && !a.showConnectDialog {
+		// A leader sequence only starts while the chat page is key-owner and
+		// no dialog is modal over it (Spec 09d).
+		if a.leaderPending && !a.inChatContext() {
+			a.leaderPending = false
+		}
+		if a.inChatContext() {
 			if a.leaderPending {
-				a.leaderPending = false
-				switch msg.String() {
-				case "n":
-					p := a.pages[page.ChatPage]
-					cp, cmd := p.Update(chat.SessionClearedMsg{})
-					if cmd != nil {
-						return a, cmd
+				if key.Matches(msg, keys.Quit) {
+					// ctrl+c must keep working while a sequence is pending.
+					a.leaderPending = false
+				} else {
+					a.leaderPending = false
+					if action, ok := leaderSuffixes[msg.String()]; ok {
+						return a.runLeaderAction(action)
 					}
-					a.pages[page.ChatPage] = cp
-					if a.currentPage == page.ChatPage {
-						cp2, cmd2 := p.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{}})
-						_ = cp2
-						_ = cmd2
-					}
-					return a, util.CmdHandler(chat.SessionClearedMsg{})
-				case "b":
-					return a, util.CmdHandler(toggleSidebarMsg{})
-				case "r":
-					if a.app != nil {
-						sessions, err := a.app.Sessions.List(context.Background())
-						if err == nil && len(sessions) > 0 {
-							a.sessionDialog.SetSessions(sessions)
-							a.showSessionDialog = true
-							return a, nil
-						}
-					}
-					return a, util.ReportWarn("No sessions available")
-				case "d":
-					if a.app != nil {
-						sessions, err := a.app.Sessions.List(context.Background())
-						if err == nil && len(sessions) > 0 {
-							a.sessionDialog.SetSessions(sessions)
-							a.showSessionDialog = true
-							return a, nil
-						}
-					}
-					return a, util.ReportWarn("No sessions available")
-				case "c":
-					return a, util.CmdHandler(startCompactSessionMsg{})
+					// Any other key just cancels the sequence.
+					return a, nil
 				}
-				return a, nil
 			}
 			if key.Matches(msg, keys.Leader) {
 				a.leaderPending = true
 				return a, nil
+			}
+			if action, ok := leaderDirectAction(msg); ok {
+				return a.runLeaderAction(action)
 			}
 		}
 

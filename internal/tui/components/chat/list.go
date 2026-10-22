@@ -34,10 +34,13 @@ type messagesCmp struct {
 	uiMessages    []uiMessage
 	currentMsgID  string
 	cachedContent map[string]cacheItem
-	spinner       spinner.Model
-	rendering     bool
-	attachments   viewport.Model
-	zones         *util.ZoneSet
+	// thinkingExpanded tracks which reasoning blocks are open (Spec 09e);
+	// absent means collapsed.
+	thinkingExpanded map[string]bool
+	spinner          spinner.Model
+	rendering        bool
+	attachments      viewport.Model
+	zones            *util.ZoneSet
 }
 type renderFinishedMsg struct{}
 
@@ -101,6 +104,14 @@ func (m *messagesCmp) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseMsg:
 		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
 			if id, ok := m.zones.At(msg); ok {
+				if thinkID, isThink := strings.CutPrefix(id, "think:"); isThink {
+					// Toggling the reasoning block invalidates the cached render.
+					m.thinkingExpanded[thinkID] = !m.thinkingExpanded[thinkID]
+					delete(m.cachedContent, thinkID)
+					m.currentMsgID = thinkID
+					m.renderView()
+					return m, nil
+				}
 				msgID := strings.TrimPrefix(id, "msg:")
 				m.currentMsgID = msgID
 				m.scrollToMessage(msgID)
@@ -236,6 +247,7 @@ func (m *messagesCmp) renderView() {
 				m.messages,
 				m.app.Messages,
 				m.currentMsgID,
+				m.thinkingExpanded[msg.ID],
 				isSummary,
 				m.width,
 				pos,
@@ -254,7 +266,7 @@ func (m *messagesCmp) renderView() {
 	m.zones.Reset()
 	messages := make([]string, 0)
 	for _, v := range m.uiMessages {
-		marked := m.zones.Mark("msg:"+v.ID, v.content)
+		marked := m.zones.Mark(v.zone(), v.content)
 		messages = append(messages, lipgloss.JoinVertical(lipgloss.Left, marked),
 			baseStyle.
 				Width(m.width).
@@ -505,11 +517,12 @@ func NewMessagesCmp(app *app.App) tea.Model {
 	vp.KeyMap.HalfPageUp = messageKeys.HalfPageUp
 	vp.KeyMap.HalfPageDown = messageKeys.HalfPageDown
 	return &messagesCmp{
-		app:           app,
-		cachedContent: make(map[string]cacheItem),
-		viewport:      vp,
-		spinner:       s,
-		attachments:   attachmets,
-		zones:         util.NewZoneSet(),
+		app:              app,
+		cachedContent:    make(map[string]cacheItem),
+		thinkingExpanded: make(map[string]bool),
+		viewport:         vp,
+		spinner:          s,
+		attachments:      attachmets,
+		zones:            util.NewZoneSet(),
 	}
 }

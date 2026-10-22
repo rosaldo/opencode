@@ -102,3 +102,72 @@ func TestResolveKeybindsUnknownDoesNotDisableOthers(t *testing.T) {
 		t.Fatalf("session_list = %v", got)
 	}
 }
+
+func TestApplyLeaderBindingsDefaults(t *testing.T) {
+	restore := resolvedKeybinds
+	defer func() { resolvedKeybinds = restore }()
+
+	kb, warnings := ResolveKeybinds(nil)
+	if len(warnings) != 0 {
+		t.Fatalf("unexpected warnings: %v", warnings)
+	}
+	resolvedKeybinds = kb
+	applyLeaderBindings()
+
+	want := map[string]leaderAction{
+		"n": leaderNewSession,
+		"r": leaderRenameSession,
+		"d": leaderDeleteSession,
+		"c": leaderCompactSession,
+		"b": leaderToggleSidebar,
+	}
+	if !reflect.DeepEqual(leaderSuffixes, want) {
+		t.Errorf("suffixes = %v, want %v", leaderSuffixes, want)
+	}
+	if len(leaderDirect) != 0 {
+		t.Errorf("direct = %v, want none with the default leader", leaderDirect)
+	}
+}
+
+func TestApplyLeaderBindingsReconfigured(t *testing.T) {
+	restore := resolvedKeybinds
+	defer func() { resolvedKeybinds = restore }()
+
+	kb, warnings := ResolveKeybinds(map[string]string{
+		"leader":          "ctrl+a",
+		"session_delete":  "ctrl+d",
+		"session_compact": "none",
+	})
+	if len(warnings) != 0 {
+		t.Fatalf("unexpected warnings: %v", warnings)
+	}
+	resolvedKeybinds = kb
+	applyLeaderBindings()
+
+	// The leader key follows the configured "leader" keybind.
+	want := map[string]leaderAction{
+		"n": leaderNewSession,
+		"r": leaderRenameSession,
+		"b": leaderToggleSidebar,
+	}
+	if !reflect.DeepEqual(leaderSuffixes, want) {
+		t.Errorf("suffixes = %v, want %v", leaderSuffixes, want)
+	}
+	if _, ok := leaderSuffixes["d"]; ok {
+		t.Error("session_delete bound without the leader must not be a suffix")
+	}
+	if _, ok := leaderSuffixes["c"]; ok {
+		t.Error("session_compact disabled must not register a suffix")
+	}
+
+	binding, ok := leaderDirect[leaderDeleteSession]
+	if !ok {
+		t.Fatal("session_delete must be registered as a direct binding")
+	}
+	if got := binding.Keys(); !reflect.DeepEqual(got, []string{"ctrl+d"}) {
+		t.Errorf("direct session_delete = %v, want [ctrl+d]", got)
+	}
+	if _, ok := leaderDirect[leaderCompactSession]; ok {
+		t.Error("disabled session_compact must not register a direct binding")
+	}
+}

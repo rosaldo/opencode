@@ -329,8 +329,11 @@ func (s *sessionDialogCmp) BindingKeys() []key.Binding {
 
 func (s *sessionDialogCmp) SetSessions(sessions []session.Session) {
 	s.allSessions = sessions
-	s.sessions = s.filtered()
+	// The mode must be reset before filtering: a search left over from a
+	// previous opening would otherwise shrink the freshly loaded list while
+	// the dialog renders in list mode.
 	s.mode = sessionModeList
+	s.sessions = s.filtered()
 	s.pendingDelete = false
 
 	if s.selectedSessionID != "" {

@@ -105,22 +105,34 @@ Fechar lacunas da TUI: **keybinds configuráveis**, suporte a **mouse/scroll**, 
     - Parser puro `internal/tui/components/chat/slash.go` (`ParseInput`): `/cmd args` → `InputSlash`, `!sh` → `InputShell`, só no início do input; testes `slash_test.go`.
     - Editor intercepta `/` e `!` com textarea vazio: `/` emite `RunSlashCommandMsg` e abre o command dialog (filtrado por nome); `!` entra em **shell mode** (`!` no prompt, esc sai). Enter em `!cmd` executa via `sh -c`, captura saída e injeta `!cmd\n\n```console\n$ ...\n...\n```` como prompt, acionando o agente.
     - `tui.go` filtra o dialog por nome (`filterCommands`, testado). Testes: `internal/tui/commands_test.go`.
-    - **Command palette `ctrl+p`**: dialog com busca fuzzy (filtros por título/descrição/id), agrupado por contexto (built-in/custom), rodapé com keybinds, atalhos de navegação. OpenCode TS v2 usa `ctrl+p` como palette global.
-    - **Wiring completo do leader**: ligar `session_new` (`<leader>n`), `session_rename` (`<leader>r`), `session_delete` (`<leader>d`), `session_compact` (`<leader>c`), `sidebar_toggle` (`<leader>b`), `prompt_paste` (garantido) — hoje resolvidos mas não usados.
-    - **`ctrl+p` coexiste com `ctrl+k`** (commands dialog atual) durante transição; ambos abertos via keybind configurável.
-    - Mouse/teclado consistentes; respeita keybinds configuráveis.
-    - Command palette : busca fuzzy, agrupado por contexto, rodapé com keybinds.
 
-    - **Command palette ctrl+p**: dialog com busca fuzzy (filtros por título/descrição/id), agrupado por contexto (built-in/custom), rodapé com keybinds, atalhos de navegação. OpenCode TS v2 usa ctrl+p como palette global.
-    - **Wiring completo do leader**: ligar session_new (<leader>n), session_rename (<leader>r), session_delete (<leader>d), session_compact (<leader>c), sidebar_toggle (<leader>b).
-    - **ctrl+p coexiste com ctrl+k** (commands dialog atual) durante transição; ambos abertos via keybind configurável.
-    - Mouse/teclado consistentes; respeita keybinds configuráveis.
-
-  - **Command palette + leader keys (09d)** — em progresso:
-    - **Command palette ctrl+p**: dialog com busca fuzzy (filtros por título/descrição/id), agrupado por contexto (built-in/custom), rodapé com keybinds, atalhos de navegação. OpenCode TS v2 usa ctrl+p como palette global.
-    - **Wiring completo do leader**: ligar session_new (<leader>n), session_rename (<leader>r), session_delete (<leader>d), session_compact (<leader>c), sidebar_toggle (<leader>b).
-    - **ctrl+p coexiste com ctrl+k** (commands dialog atual) durante transição; ambos abertos via keybind configurável.
-    - Mouse/teclado consistentes; respeita keybinds configuráveis.
+  - **Command palette + leader keys (09d)** — feito:
+    - **Command palette `ctrl+p`**: id `command_palette` em `keybinds.go`, resolve para `ctrl+p` e
+      abre o mesmo dialog que `ctrl+k` (`openCommandDialog`) — coexistem e são configuráveis.
+    - **Leader**: `resolveBinding` vira sequência de duas teclas (`<leader>x` → `[leader, x]`);
+      `keys.Leader` sai de `tui.keybinds.leader` e `applyLeaderBindings` (`tui.go`) monta
+      `leaderSuffixes` (sufixo → ação) a partir dos próprios keybinds — se um id for reconfigurado
+      sem o prefixo (ex.: `session_delete: ctrl+d`) vira `leaderDirect` (tecla direta); `none`
+      remove a ação. Ações: `session_new` → `page.NewSessionMsg`, `sidebar_toggle` →
+      `page.ToggleSidebarMsg` (ambos tratados pelo `chatPage`, que guarda `sidebarVisible`; `n` limpa
+      a sessão/sidebar e `chat.SessionClearedMsg` zera `appModel.selectedSession`, então
+      `session_compact` não resume a sessão anterior), `session_rename`/`session_delete` → diálogo de
+      sessão aberto **com a sessão atual pré-selecionada** (`SetSessions` + `SetSelectedSession`),
+      `session_compact` → `startCompactSessionMsg`.
+    - Só ativa no ChatPage com nenhum diálogo aberto (`inChatContext`); qualquer outra tecla cancela
+      o prefixo (`ctrl+c` é repassado ao handler de saída).
+    - Testes: `internal/tui/keybinds_test.go` (defaults `<leader>`, override, `none`,
+      `applyLeaderBindings` defaults e reconfigurado).
+  - **Blocos thinking/reasoning (09e)** — feito:
+    - `renderThinkingBlock` (`message.go`): `▸ Thinking · N lines` recolhido; `▾` + conteúdo
+      (markdown esmaecido, borda `TextMuted`) quando expandido.
+    - `renderAssistantMessage` ganhou `thinkingExpanded` e **sempre** emite o bloco de raciocínio
+      antes da resposta (`thinkingMessageType`, zona `think:<id>`); o `else if` antigo descartava o
+      conteúdo do thinking (bug) e o bloco nunca era anexado.
+    - Estado por mensagem em `messagesCmp.thinkingExpanded`; clique esquerdo na zona `think:`
+      alterna, invalida o cache (`cachedContent`) e re-renderiza.
+    - Testes: `internal/tui/components/chat/message_test.go` (recolhido/expandido, ordem dos
+      blocos, zona e posição).
 
 - Pendências conscientes: codificação **sixel** de fato (hoje o protocolo sixel detectado usa o
   fallback half-block, que funciona em qualquer terminal truecolor) e integração de hit-test das

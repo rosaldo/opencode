@@ -27,6 +27,7 @@ type chatPage struct {
 	messages             layout.Container
 	layout               layout.SplitPaneLayout
 	session              session.Session
+	sidebarVisible       bool
 	completionDialog     dialog.CompletionDialog
 	showCompletionDialog bool
 }
@@ -113,11 +114,7 @@ func (p *chatPage) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			p.showCompletionDialog = true
 			// Continue sending keys to layout->chat
 		case key.Matches(msg, keyMap.NewSession):
-			p.session = session.Session{}
-			return p, tea.Batch(
-				p.clearSidebar(),
-				util.CmdHandler(chat.SessionClearedMsg{}),
-			)
+			return p.startNewSession()
 		case key.Matches(msg, keyMap.Cancel):
 			if p.session.ID != "" {
 				// Cancel the current session's generation process
@@ -126,6 +123,10 @@ func (p *chatPage) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return p, nil
 			}
 		}
+	case NewSessionMsg:
+		return p.startNewSession()
+	case ToggleSidebarMsg:
+		return p.toggleSidebar()
 	}
 	if p.showCompletionDialog {
 		context, contextCmd := p.completionDialog.Update(msg)
@@ -148,6 +149,7 @@ func (p *chatPage) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (p *chatPage) setSidebar() tea.Cmd {
+	p.sidebarVisible = true
 	sidebarContainer := layout.NewContainer(
 		chat.NewSidebarCmp(p.session, p.app.History),
 		layout.WithPadding(1, 1, 1, 1),
@@ -156,7 +158,29 @@ func (p *chatPage) setSidebar() tea.Cmd {
 }
 
 func (p *chatPage) clearSidebar() tea.Cmd {
+	p.sidebarVisible = false
 	return p.layout.ClearRightPanel()
+}
+
+// startNewSession drops the current session and clears the sidebar and the
+// message list (Spec 09d). Shared by ctrl+n and <leader>n.
+func (p *chatPage) startNewSession() (tea.Model, tea.Cmd) {
+	p.session = session.Session{}
+	return p, tea.Batch(
+		p.clearSidebar(),
+		util.CmdHandler(chat.SessionClearedMsg{}),
+	)
+}
+
+// toggleSidebar shows or hides the right panel (Spec 09d, <leader>b).
+func (p *chatPage) toggleSidebar() (tea.Model, tea.Cmd) {
+	if p.sidebarVisible {
+		return p, p.clearSidebar()
+	}
+	if p.session.ID == "" {
+		return p, util.ReportWarn("No active session")
+	}
+	return p, p.setSidebar()
 }
 
 // runShell executes a "!cmd" passthrough and feeds the command and its output
