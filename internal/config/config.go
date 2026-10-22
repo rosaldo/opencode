@@ -144,7 +144,11 @@ type TUIConfig struct {
 	Theme string `json:"theme,omitempty"`
 	// Keybinds maps a keybind id (e.g. "session_list") to a binding (e.g.
 	// "ctrl+s", "<leader>a", or "none" to disable). See internal/tui (Spec 09).
-	Keybinds map[string]string `json:"keybinds,omitempty"`
+	Keybinds map[string]string `json:"keybinds,omitempty" mapstructure:"keybinds"`
+	// LeaderTimeout is how long the TUI waits for the key that follows the
+	// leader before cancelling the sequence, in milliseconds. 0 selects the
+	// 2000ms default (Spec 09d).
+	LeaderTimeout int `json:"leader_timeout,omitempty" mapstructure:"leader_timeout"`
 }
 
 // ShellConfig defines the configuration for the shell used by the bash tool.

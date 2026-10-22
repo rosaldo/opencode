@@ -126,6 +126,12 @@ func generateSchema() map[string]any {
 					"type": "string",
 				},
 			},
+			"leader_timeout": map[string]any{
+				"type":        "integer",
+				"description": "Milliseconds the TUI waits for the key after the leader before cancelling the sequence",
+				"default":     2000,
+				"minimum":     1,
+			},
 		},
 	}
 

@@ -3,7 +3,9 @@ package tui
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
@@ -42,8 +44,18 @@ type keyMap struct {
 
 type startCompactSessionMsg struct{}
 
+// leaderTimeoutMsg fires when the leader sequence was not completed in time
+// (Spec 09d). seq tags the tick so a stale one cannot cancel a newer sequence.
+type leaderTimeoutMsg struct {
+	seq uint64
+}
+
 const (
 	quitKey = "q"
+
+	// defaultLeaderTimeout is how long the TUI waits for the key that follows
+	// the leader; `tui.leader_timeout` overrides it (Spec 09d).
+	defaultLeaderTimeout = 2 * time.Second
 )
 
 var keys = keyMap{
@@ -226,6 +238,66 @@ func leaderDirectAction(msg tea.KeyMsg) (leaderAction, bool) {
 	return leaderNewSession, false
 }
 
+// beginLeader arms a leader sequence and invalidates any tick left over from a
+// previous one (Spec 09d).
+func (a *appModel) beginLeader() {
+	a.leaderSeq++
+	a.leaderPending = true
+}
+
+// cancelLeader drops a pending sequence, so its timeout tick stops mattering.
+func (a *appModel) cancelLeader() {
+	if a.leaderPending {
+		a.leaderSeq++
+	}
+	a.leaderPending = false
+}
+
+// leaderTimeoutCmd fires leaderTimeoutMsg after tui.leader_timeout (default 2s).
+func (a appModel) leaderTimeoutCmd() tea.Cmd {
+	seq := a.leaderSeq
+	return tea.Tick(leaderTimeoutFromConfig(), func(time.Time) tea.Msg {
+		return leaderTimeoutMsg{seq: seq}
+	})
+}
+
+// leaderTimeoutFromConfig resolves tui.leader_timeout in milliseconds, falling
+// back to defaultLeaderTimeout when unset or invalid (Spec 09d).
+func leaderTimeoutFromConfig() time.Duration {
+	if cfg := config.Get(); cfg != nil && cfg.TUI.LeaderTimeout > 0 {
+		return time.Duration(cfg.TUI.LeaderTimeout) * time.Millisecond
+	}
+	return defaultLeaderTimeout
+}
+
+// leaderHints labels the suffix each leader action reacts to (Spec 09d).
+var leaderHints = map[leaderAction]string{
+	leaderNewSession:     "new session",
+	leaderRenameSession:  "rename session",
+	leaderDeleteSession:  "delete session",
+	leaderCompactSession: "compact session",
+	leaderToggleSidebar:  "toggle sidebar",
+}
+
+// leaderHintRows lists "suffix  label" pairs sorted by suffix: the which-key
+// popup must not jump around, and map iteration is randomised.
+func leaderHintRows() []string {
+	suffixes := make([]string, 0, len(leaderSuffixes))
+	for suffix := range leaderSuffixes {
+		suffixes = append(suffixes, suffix)
+	}
+	slices.Sort(suffixes)
+
+	rows := make([]string, 0, len(suffixes))
+	for _, suffix := range suffixes {
+		rows = append(rows, fmt.Sprintf("%-4s %s", suffix, leaderHints[leaderSuffixes[suffix]]))
+	}
+	if len(rows) == 0 {
+		rows = append(rows, "no leader actions bound")
+	}
+	return rows
+}
+
 // inChatContext reports whether the chat keybinds own the keyboard: the chat
 // page is up and no dialog is modal over it (Spec 09d).
 func (a appModel) inChatContext() bool {
@@ -342,6 +414,9 @@ type appModel struct {
 	isCompacting      bool
 	compactingMessage string
 	leaderPending     bool
+	// leaderSeq tags every leader transition so ticks from an abandoned
+	// sequence cannot cancel the current one (Spec 09d).
+	leaderSeq uint64
 }
 
 func (a appModel) Init() tea.Cmd {
@@ -558,6 +633,13 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case chat.SessionClearedMsg:
 		a.selectedSession = session.Session{}
 
+	case leaderTimeoutMsg:
+		// A stale tick (seq mismatch) belongs to a sequence that already ended.
+		if a.leaderPending && msg.seq == a.leaderSeq {
+			a.leaderPending = false
+		}
+		return a, nil
+
 	case startCompactSessionMsg:
 		// Start compacting the current session
 		a.isCompacting = true
@@ -769,16 +851,17 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// A leader sequence only starts while the chat page is key-owner and
 		// no dialog is modal over it (Spec 09d).
 		if a.leaderPending && !a.inChatContext() {
-			a.leaderPending = false
+			a.cancelLeader()
 		}
 		if a.inChatContext() {
 			if a.leaderPending {
 				if key.Matches(msg, keys.Quit) {
 					// ctrl+c must keep working while a sequence is pending.
-					a.leaderPending = false
+					a.cancelLeader()
 				} else {
-					a.leaderPending = false
-					if action, ok := leaderSuffixes[msg.String()]; ok {
+					action, ok := leaderSuffixes[msg.String()]
+					a.cancelLeader()
+					if ok {
 						return a.runLeaderAction(action)
 					}
 					// Any other key just cancels the sequence.
@@ -786,8 +869,8 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			if key.Matches(msg, keys.Leader) {
-				a.leaderPending = true
-				return a, nil
+				a.beginLeader()
+				return a, a.leaderTimeoutCmd()
 			}
 			if action, ok := leaderDirectAction(msg); ok {
 				return a.runLeaderAction(action)
@@ -1140,6 +1223,31 @@ func (a *appModel) moveToPage(pageID page.PageID) tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
+// leaderHintView renders the which-key popup listing the suffixes a pending
+// leader sequence accepts (Spec 09d).
+func (a appModel) leaderHintView() string {
+	t := theme.CurrentTheme()
+	style := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(t.BorderFocused()).
+		BorderBackground(t.Background()).
+		Padding(0, 1).
+		Background(t.Background()).
+		Foreground(t.Text())
+
+	label := "leader"
+	if bound := keys.Leader.Keys(); len(bound) > 0 {
+		label = "leader " + bound[0]
+	}
+	header := lipgloss.NewStyle().
+		Foreground(t.Primary()).
+		Bold(true).
+		Render(label + " — press a key")
+
+	lines := append([]string{header}, leaderHintRows()...)
+	return style.Render(strings.Join(lines, "\n"))
+}
+
 func (a appModel) View() string {
 	components := []string{
 		a.pages[a.currentPage].View(),
@@ -1203,6 +1311,20 @@ func (a appModel) View() string {
 			appView,
 			true,
 		)
+	}
+
+	// Which-key popup: the leader prefix is waiting for its suffix (Spec 09d).
+	if a.leaderPending {
+		overlay := a.leaderHintView()
+		row := lipgloss.Height(appView) - lipgloss.Height(overlay) - 1
+		if row < 0 {
+			row = 0
+		}
+		col := lipgloss.Width(appView)/2 - lipgloss.Width(overlay)/2
+		if col < 0 {
+			col = 0
+		}
+		appView = layout.PlaceOverlay(col, row, overlay, appView, true)
 	}
 
 	if a.showHelp {

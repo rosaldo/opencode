@@ -1558,6 +1558,12 @@
           "description": "Keybind id to binding map (e.g. session_list: ctrl+s, \u003cleader\u003e prefix, \"none\" to disable)",
           "type": "object"
         },
+        "leader_timeout": {
+          "default": 2000,
+          "description": "Milliseconds the TUI waits for the key after the leader before cancelling the sequence",
+          "minimum": 1,
+          "type": "integer"
+        },
         "theme": {
           "default": "opencode",
           "description": "TUI theme name",

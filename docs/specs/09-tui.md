@@ -126,6 +126,11 @@ Fechar lacunas da TUI: **keybinds configuráveis**, suporte a **mouse/scroll**, 
       saem preservando a lista filtrada e `SetCommands` reseta modo/query ao reabrir. `dialog/commands_test.go`.
     - **`prompt_paste` ligado**: `chat.SetPromptPasteKeybind` recebe
       `resolvedKeybinds.Keys(KeybindPromptPaste)` em `applyKeybinds`; `ctrl+v` vira configurável.
+    - **Which-key + timeout do prefixo**: `beginLeader`/`cancelLeader` (`appModel.leaderSeq` invalida
+      ticks obsoletos), `tea.Tick` de `tui.leader_timeout` (ms, default **2000**, mesmo valor do
+      `tui.json` do TS; `config.TUIConfig.LeaderTimeout` + propriedade no `opencode-schema.json`) e
+      popup com os sufixos válidos (`leaderHintView`, linhas ordenadas por `leaderHintRows`) ancorado
+      no rodapé. Testes: `internal/tui/leader_test.go`.
     - Testes: `internal/tui/keybinds_test.go` (defaults `<leader>`, override, `none`,
       `applyLeaderBindings` defaults e reconfigurado).
   - **Blocos thinking/reasoning (09e)** — feito:
