@@ -144,6 +144,16 @@ func (c *commandDialogCmp) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, commandKeys.Escape):
 			return c, util.CmdHandler(CloseCommandDialogMsg{})
 		}
+	case utilComponents.ListActivatedMsg:
+		// A click already moved the selection; activate it like Enter
+		// (Spec 09n).
+		selectedItem, idx := c.listView.GetSelectedItem()
+		if idx != -1 {
+			return c, util.CmdHandler(CommandSelectedMsg{
+				Command: selectedItem,
+			})
+		}
+		return c, nil
 	case tea.WindowSizeMsg:
 		c.width = msg.Width
 		c.height = msg.Height

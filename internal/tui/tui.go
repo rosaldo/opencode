@@ -22,6 +22,7 @@ import (
 	"github.com/opencode-ai/opencode/internal/tui/components/chat"
 	"github.com/opencode-ai/opencode/internal/tui/components/core"
 	"github.com/opencode-ai/opencode/internal/tui/components/dialog"
+	utilComponents "github.com/opencode-ai/opencode/internal/tui/components/util"
 	"github.com/opencode-ai/opencode/internal/tui/layout"
 	"github.com/opencode-ai/opencode/internal/tui/page"
 	"github.com/opencode-ai/opencode/internal/tui/theme"
@@ -386,6 +387,34 @@ func (a appModel) runLeaderAction(action leaderAction) (appModel, tea.Cmd) {
 	return a, nil
 }
 
+// forwardMouseClick routes a left click to the open dialog, else to the
+// current page (Spec 09n).
+func (a *appModel) forwardMouseClick(msg tea.MouseMsg) tea.Cmd {
+	if a.showSessionDialog {
+		d, cmd := a.sessionDialog.Update(msg)
+		a.sessionDialog = d.(dialog.SessionDialog)
+		return cmd
+	}
+	if a.showCommandDialog {
+		d, cmd := a.commandDialog.Update(msg)
+		a.commandDialog = d.(dialog.CommandDialog)
+		return cmd
+	}
+	if a.showModelDialog {
+		d, cmd := a.modelDialog.Update(msg)
+		a.modelDialog = d.(dialog.ModelDialog)
+		return cmd
+	}
+	if a.showThemeDialog {
+		d, cmd := a.themeDialog.Update(msg)
+		a.themeDialog = d.(dialog.ThemeDialog)
+		return cmd
+	}
+	var cmd tea.Cmd
+	a.pages[a.currentPage], cmd = a.pages[a.currentPage].Update(msg)
+	return cmd
+}
+
 // openSessionList loads every session and shows the switcher (ctrl+s and
 // /sessions, Spec 09h).
 func (a appModel) openSessionList() (appModel, tea.Cmd) {
@@ -631,26 +660,23 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		return a, tea.Batch(cmds...)
 	case tea.MouseMsg:
-		// Translate wheel scroll into up/down keys for the focused component
-		// (Spec 09). Press/release and other buttons are ignored for now.
-		var keyName string
-		switch msg.Button {
-		case tea.MouseButtonWheelUp:
-			keyName = "up"
-		case tea.MouseButtonWheelDown:
-			keyName = "down"
-		default:
-			return a, nil
-		}
 		if msg.Action != tea.MouseActionPress {
 			return a, nil
 		}
-		keyMsg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(keyName)}
-		switch keyName {
-		case "up":
+		// Wheel scroll is translated into up/down keys for the focused
+		// component (Spec 09); left clicks are forwarded as-is so list
+		// dialogs, the sidebar and the message zones can hit-test them
+		// (Spec 09n).
+		var keyMsg tea.KeyMsg
+		switch msg.Button {
+		case tea.MouseButtonWheelUp:
 			keyMsg = tea.KeyMsg{Type: tea.KeyUp}
-		case "down":
+		case tea.MouseButtonWheelDown:
 			keyMsg = tea.KeyMsg{Type: tea.KeyDown}
+		case tea.MouseButtonLeft:
+			return a, a.forwardMouseClick(msg)
+		default:
+			return a, nil
 		}
 		if a.showSessionDialog {
 			d, cmd := a.sessionDialog.Update(keyMsg)
@@ -665,6 +691,11 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.showModelDialog {
 			d, cmd := a.modelDialog.Update(keyMsg)
 			a.modelDialog = d.(dialog.ModelDialog)
+			return a, cmd
+		}
+		if a.showThemeDialog {
+			d, cmd := a.themeDialog.Update(keyMsg)
+			a.themeDialog = d.(dialog.ThemeDialog)
 			return a, cmd
 		}
 		a.pages[a.currentPage], cmd = a.pages[a.currentPage].Update(keyMsg)
@@ -773,6 +804,19 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case redoMessageMsg:
 		return a.redoMessage()
+
+	case utilComponents.ListActivatedMsg:
+		// SimpleList clicks are relayed back to the owning dialog (Spec 09n).
+		if a.showCommandDialog {
+			d, cmd := a.commandDialog.Update(msg)
+			a.commandDialog = d.(dialog.CommandDialog)
+			return a, cmd
+		}
+		return a, nil
+
+	case chat.ShowSessionListMsg:
+		// The sidebar's session title opens the switcher (Spec 09n).
+		return a.openSessionList()
 
 	// Built-in slash commands (Spec 09h).
 	case showSessionListMsg:

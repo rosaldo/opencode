@@ -4,6 +4,7 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	utilComponents "github.com/opencode-ai/opencode/internal/tui/components/util"
 	"github.com/opencode-ai/opencode/internal/tui/layout"
 	"github.com/opencode-ai/opencode/internal/tui/styles"
 	"github.com/opencode-ai/opencode/internal/tui/theme"
@@ -30,7 +31,11 @@ type themeDialogCmp struct {
 	width        int
 	height       int
 	currentTheme string
+	zones        util.ZoneSet
 }
+
+// themeZonePrefix namespaces the mouse zones of the theme rows (Spec 09n).
+const themeZonePrefix = "td:"
 
 type themeKeyMap struct {
 	Up     key.Binding
@@ -99,27 +104,40 @@ func (t *themeDialogCmp) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return t, nil
 		case key.Matches(msg, themeKeys.Enter):
-			if len(t.themes) > 0 {
-				previousTheme := theme.CurrentThemeName()
-				selectedTheme := t.themes[t.selectedIdx]
-				if previousTheme == selectedTheme {
-					return t, util.CmdHandler(CloseThemeDialogMsg{})
-				}
-				if err := theme.SetTheme(selectedTheme); err != nil {
-					return t, util.ReportError(err)
-				}
-				return t, util.CmdHandler(ThemeChangedMsg{
-					ThemeName: selectedTheme,
-				})
-			}
+			return t.clickRow(t.selectedIdx)
 		case key.Matches(msg, themeKeys.Escape):
 			return t, util.CmdHandler(CloseThemeDialogMsg{})
+		}
+	case tea.MouseMsg:
+		// A left click on a row selects and applies that theme (Spec 09n).
+		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
+			if idx, ok := utilComponents.ListClickedRow(&t.zones, themeZonePrefix, msg); ok {
+				return t.clickRow(idx)
+			}
 		}
 	case tea.WindowSizeMsg:
 		t.width = msg.Width
 		t.height = msg.Height
 	}
 	return t, nil
+}
+
+// clickRow selects and applies the theme at idx, closing the dialog when the
+// theme is already active; out-of-range indexes are ignored (Spec 09n).
+func (t *themeDialogCmp) clickRow(idx int) (tea.Model, tea.Cmd) {
+	if idx < 0 || idx >= len(t.themes) {
+		return t, nil
+	}
+	t.selectedIdx = idx
+	previousTheme := theme.CurrentThemeName()
+	selectedTheme := t.themes[idx]
+	if previousTheme == selectedTheme {
+		return t, util.CmdHandler(CloseThemeDialogMsg{})
+	}
+	if err := theme.SetTheme(selectedTheme); err != nil {
+		return t, util.ReportError(err)
+	}
+	return t, util.CmdHandler(ThemeChangedMsg{ThemeName: selectedTheme})
 }
 
 func (t *themeDialogCmp) View() string {
@@ -147,6 +165,7 @@ func (t *themeDialogCmp) View() string {
 
 	// Build the theme list
 	themeItems := make([]string, 0, len(t.themes))
+	t.zones.Reset()
 	for i, themeName := range t.themes {
 		itemStyle := baseStyle.Width(maxWidth)
 
@@ -157,7 +176,11 @@ func (t *themeDialogCmp) View() string {
 				Bold(true)
 		}
 
-		themeItems = append(themeItems, itemStyle.Padding(0, 1).Render(themeName))
+		// The zone carries the absolute index so a click maps back (Spec 09n).
+		themeItems = append(themeItems, t.zones.Mark(
+			utilComponents.ListZoneID(themeZonePrefix, i),
+			itemStyle.Padding(0, 1).Render(themeName),
+		))
 	}
 
 	title := baseStyle.

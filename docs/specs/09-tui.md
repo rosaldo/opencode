@@ -234,12 +234,33 @@ Fechar lacunas da TUI: **keybinds configuráveis**, suporte a **mouse/scroll**, 
       (permutável via `tui.json`, como no TS).
     - `applyLeaderBindings` cobre as duas ações; which-key ganha o sufixo `e` ("open editor").
     - Testes: `leader_test.go`/`keybinds_test.go` (sufixo `e`).
+  - **Hit-test de mouse das zonas restantes (09n)** — feito:
+    - O `case tea.MouseMsg` do `appModel` engolia cliques (`default: return a, nil`): só o
+      wheel era traduzido para up/down, então o handler de clique do `messagesCmp` (zonas
+      `think:`/`msg:`) era código morto. Agora o wheel segue traduzido (com a rota do tema
+      incluída) e o clique esquerdo vai para `forwardMouseClick`: diálogo aberto recebe o
+      MouseMsg cru (nunca a página por baixo), senão a página atual (`chatPage` broadcast →
+      messagesCmp/sidebar).
+    - Diálogos de lista (session/model/theme) ganharam `clickRow(idx)` puro e testável e
+      zonas com **índice absoluto** no View (`sd:`/`md:`/`td:`; `slist:` no `SimpleList`,
+      com helpers exportados `ListZoneID`/`ListClickedRow`) — o índice sobrevive à janela
+      de scroll. Clique = seleção + a mesma ação do Enter (troca de sessão/modelo/tema;
+      tema já ativo fecha o diálogo).
+    - `ListActivatedMsg` do SimpleList é relayado pelo appModel ao command dialog
+      (a seleção já foi movida pelo clique → `CommandSelectedMsg`, igual ao Enter).
+    - Sidebar: título da sessão → `chat.ShowSessionListMsg` (abre o switcher) e arquivo
+      modificado → `$EDITOR` via `tea.ExecProcess(EditorCommand(abs))` com path absoluto
+      resolvido pela seam `workingDirectory`.
+    - Testes: `mouse_test.go` (clickRow de session/model/theme), `simple-list_test.go`
+      (`ListZoneID`/`ListClickedRow`/`clickRow`), `commands_test.go` (relay),
+      `sidebar_test.go` (`clickZone`, seam de working directory).
 
 - Pendências conscientes: codificação **sixel** de fato (hoje o protocolo sixel detectado usa o
-  fallback half-block, que funciona em qualquer terminal truecolor) e integração de hit-test das
-  demais zonas (sidebar/diálogos); keybinds `session_copy/timeline/fork` e `prompt_stash*` ainda
-  sem ação; agrupamento do palette por contexto; `/undo`/`/redo` **não** fazem rollback de
-  arquivos via git como no TS nem reexecutam o agent (decisão consciente de escopo, Spec 09k).
+  fallback half-block, que funciona em qualquer terminal truecolor); cliques de mouse nos
+  diálogos de agents/plugins ainda sem hit-test (Spec 09n); keybinds `session_copy/timeline/fork`
+  e `prompt_stash*` ainda sem ação; agrupamento do palette por contexto; `/undo`/`/redo` **não**
+  fazem rollback de arquivos via git como no TS nem reexecutam o agent (decisão consciente de
+  escopo, Spec 09k).
 
 ## Riscos
 

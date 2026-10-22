@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -15,7 +16,21 @@ import (
 	"github.com/opencode-ai/opencode/internal/session"
 	"github.com/opencode-ai/opencode/internal/tui/styles"
 	"github.com/opencode-ai/opencode/internal/tui/theme"
+	"github.com/opencode-ai/opencode/internal/tui/util"
 )
+
+// ShowSessionListMsg asks the app to open the session switcher (Spec 09n:
+// clicking the sidebar's session title).
+type ShowSessionListMsg struct{}
+
+// Mouse zone ids of the sidebar (Spec 09n).
+const (
+	sidebarZoneSession = "side:session"
+	sidebarZoneFile    = "side:file:"
+)
+
+// workingDirectory is a seam so tests can stub the project root (Spec 09n).
+var workingDirectory = config.WorkingDirectory
 
 type sidebarCmp struct {
 	width, height int
@@ -25,6 +40,7 @@ type sidebarCmp struct {
 		additions int
 		removals  int
 	}
+	zones util.ZoneSet
 }
 
 func (m *sidebarCmp) Init() tea.Cmd {
@@ -77,12 +93,37 @@ func (m *sidebarCmp) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return <-filesCh
 			}
 		}
+	case tea.MouseMsg:
+		// A left click on a zone reacts immediately (Spec 09n).
+		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
+			if id, ok := m.zones.At(msg); ok {
+				return m.clickZone(id)
+			}
+		}
+	}
+	return m, nil
+}
+
+// clickZone reacts to a left click inside the sidebar (Spec 09n): the session
+// title opens the switcher, a modified file opens in $EDITOR.
+func (m *sidebarCmp) clickZone(id string) (tea.Model, tea.Cmd) {
+	switch {
+	case id == sidebarZoneSession:
+		return m, util.CmdHandler(ShowSessionListMsg{})
+	case strings.HasPrefix(id, sidebarZoneFile):
+		path := strings.TrimPrefix(id, sidebarZoneFile)
+		if path == "" {
+			return m, nil
+		}
+		abs := filepath.Join(workingDirectory(), path)
+		return m, tea.ExecProcess(EditorCommand(abs), func(error) tea.Msg { return nil })
 	}
 	return m, nil
 }
 
 func (m *sidebarCmp) View() string {
 	baseStyle := styles.BaseStyle()
+	m.zones.Reset()
 
 	return baseStyle.
 		Width(m.width).
@@ -117,11 +158,12 @@ func (m *sidebarCmp) sessionSection() string {
 		Width(m.width - lipgloss.Width(sessionKey)).
 		Render(fmt.Sprintf(": %s", m.session.Title))
 
-	return lipgloss.JoinHorizontal(
+	// Clicking the title opens the session switcher (Spec 09n).
+	return m.zones.Mark(sidebarZoneSession, lipgloss.JoinHorizontal(
 		lipgloss.Left,
 		sessionKey,
 		sessionValue,
-	)
+	))
 }
 
 func (m *sidebarCmp) modifiedFile(filePath string, additions, removals int) string {
@@ -205,10 +247,12 @@ func (m *sidebarCmp) modifiedFiles() string {
 	sort.Strings(paths)
 
 	// Create views for each file in sorted order
-	var fileViews []string
+	fileViews := make([]string, 0, len(paths))
 	for _, path := range paths {
 		stats := m.modFiles[path]
-		fileViews = append(fileViews, m.modifiedFile(path, stats.additions, stats.removals))
+		row := m.modifiedFile(path, stats.additions, stats.removals)
+		// Clicking a file opens it in $EDITOR (Spec 09n).
+		fileViews = append(fileViews, m.zones.Mark(sidebarZoneFile+path, row))
 	}
 
 	return baseStyle.

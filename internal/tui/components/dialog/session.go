@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/opencode-ai/opencode/internal/session"
+	utilComponents "github.com/opencode-ai/opencode/internal/tui/components/util"
 	"github.com/opencode-ai/opencode/internal/tui/layout"
 	"github.com/opencode-ai/opencode/internal/tui/styles"
 	"github.com/opencode-ai/opencode/internal/tui/theme"
@@ -59,7 +60,11 @@ type sessionDialogCmp struct {
 	mode              sessionMode
 	input             textinput.Model
 	pendingDelete     bool
+	zones             util.ZoneSet
 }
+
+// sessionZonePrefix namespaces the mouse zones of the session rows (Spec 09n).
+const sessionZonePrefix = "sd:"
 
 type sessionKeyMap struct {
 	Up      key.Binding
@@ -241,8 +246,30 @@ func (s *sessionDialogCmp) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, sessionKeys.Escape):
 			return s, util.CmdHandler(CloseSessionDialogMsg{})
 		}
+	case tea.MouseMsg:
+		// A left click on a row selects and opens that session (Spec 09n).
+		if s.mode == sessionModeList && !s.pendingDelete &&
+			msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
+			if idx, ok := utilComponents.ListClickedRow(&s.zones, sessionZonePrefix, msg); ok {
+				return s.clickRow(idx)
+			}
+		}
 	}
 	return s, nil
+}
+
+// clickRow selects and opens the session at idx; out-of-range indexes are
+// ignored (Spec 09n).
+func (s *sessionDialogCmp) clickRow(idx int) (tea.Model, tea.Cmd) {
+	if idx < 0 || idx >= len(s.sessions) {
+		return s, nil
+	}
+	s.selectedIdx = idx
+	sess, ok := s.current()
+	if !ok {
+		return s, nil
+	}
+	return s, util.CmdHandler(SessionSelectedMsg{Session: sess})
 }
 
 func (s *sessionDialogCmp) View() string {
@@ -279,13 +306,19 @@ func (s *sessionDialogCmp) View() string {
 	}
 	endIdx := min(startIdx+maxVisibleSessions, len(s.sessions))
 
+	s.zones.Reset()
 	for i := startIdx; i < endIdx; i++ {
 		sess := s.sessions[i]
 		itemStyle := baseStyle.Width(maxWidth)
 		if i == s.selectedIdx {
 			itemStyle = itemStyle.Background(t.Primary()).Foreground(t.Background()).Bold(true)
 		}
-		sessionItems = append(sessionItems, itemStyle.Padding(0, 1).Render(sess.Title))
+		// The zone carries the absolute index so a click maps back even while
+		// the list is windowed (Spec 09n).
+		sessionItems = append(sessionItems, s.zones.Mark(
+			utilComponents.ListZoneID(sessionZonePrefix, i),
+			itemStyle.Padding(0, 1).Render(sess.Title),
+		))
 	}
 
 	title := baseStyle.Foreground(t.Primary()).Bold(true).Width(maxWidth).Padding(0, 1).Render("Switch Session")

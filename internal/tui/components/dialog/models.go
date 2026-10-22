@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/opencode-ai/opencode/internal/config"
 	"github.com/opencode-ai/opencode/internal/llm/models"
+	utilComponents "github.com/opencode-ai/opencode/internal/tui/components/util"
 	"github.com/opencode-ai/opencode/internal/tui/layout"
 	"github.com/opencode-ai/opencode/internal/tui/styles"
 	"github.com/opencode-ai/opencode/internal/tui/theme"
@@ -46,11 +47,15 @@ type modelDialogCmp struct {
 	scrollOffset    int
 	hScrollOffset   int
 	hScrollPossible bool
+	zones           util.ZoneSet
 
 	// activeAgent returns the name of the agent currently selected in the
 	// AgentManager; the dialog shows and changes that agent's model.
 	activeAgent func() string
 }
+
+// modelZonePrefix namespaces the mouse zones of the model rows (Spec 09n).
+const modelZonePrefix = "md:"
 
 type modelKeyMap struct {
 	Up     key.Binding
@@ -135,12 +140,30 @@ func (m *modelDialogCmp) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, modelKeys.Escape):
 			return m, util.CmdHandler(CloseModelDialogMsg{})
 		}
+	case tea.MouseMsg:
+		// A left click on a row selects and applies that model (Spec 09n).
+		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
+			if idx, ok := utilComponents.ListClickedRow(&m.zones, modelZonePrefix, msg); ok {
+				return m.clickRow(idx)
+			}
+		}
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
 	}
 
 	return m, nil
+}
+
+// clickRow selects and applies the model at idx; out-of-range indexes are
+// ignored (Spec 09n).
+func (m *modelDialogCmp) clickRow(idx int) (tea.Model, tea.Cmd) {
+	if idx < 0 || idx >= len(m.models) {
+		return m, nil
+	}
+	m.selectedIdx = idx
+	util.ReportInfo(fmt.Sprintf("selected model: %s", m.models[idx].Name))
+	return m, util.CmdHandler(ModelSelectedMsg{Model: m.models[idx]})
 }
 
 // moveSelectionUp moves the selection up or wraps to bottom
@@ -206,13 +229,19 @@ func (m *modelDialogCmp) View() string {
 	endIdx := min(m.scrollOffset+numVisibleModels, len(m.models))
 	modelItems := make([]string, 0, endIdx-m.scrollOffset)
 
+	m.zones.Reset()
 	for i := m.scrollOffset; i < endIdx; i++ {
 		itemStyle := baseStyle.Width(maxDialogWidth)
 		if i == m.selectedIdx {
 			itemStyle = itemStyle.Background(t.Primary()).
 				Foreground(t.Background()).Bold(true)
 		}
-		modelItems = append(modelItems, itemStyle.Render(m.models[i].Name))
+		// The zone carries the absolute index so a click maps back even while
+		// the list is windowed (Spec 09n).
+		modelItems = append(modelItems, m.zones.Mark(
+			utilComponents.ListZoneID(modelZonePrefix, i),
+			itemStyle.Render(m.models[i].Name),
+		))
 	}
 
 	scrollIndicator := m.getScrollIndicators(maxDialogWidth)

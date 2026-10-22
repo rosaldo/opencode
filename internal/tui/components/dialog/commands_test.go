@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	utilComponents "github.com/opencode-ai/opencode/internal/tui/components/util"
 )
 
 func testCommands() []Command {
@@ -147,5 +148,32 @@ func TestCommandDialogEmptyQueryRestoresOrder(t *testing.T) {
 		if got[i].ID != want {
 			t.Errorf("item[%d] = %q, want %q", i, got[i].ID, want)
 		}
+	}
+}
+
+func TestCommandDialogListActivatedMsg(t *testing.T) {
+	c := newTestCommandDialog(t)
+	c.SetCommands(testCommands())
+
+	// A click moves the selection before the activation msg arrives
+	// (Spec 09n); the down key is the keyboard equivalent.
+	c.Update(tea.KeyMsg{Type: tea.KeyDown})
+
+	_, cmd := c.Update(utilComponents.ListActivatedMsg{Index: 1})
+	if cmd == nil {
+		t.Fatal("ListActivatedMsg should run the selected command")
+	}
+	selected, ok := cmd().(CommandSelectedMsg)
+	if !ok {
+		t.Fatalf("msg = %T, want CommandSelectedMsg", cmd())
+	}
+	if selected.Command.ID != "compact" {
+		t.Errorf("command = %q, want compact", selected.Command.ID)
+	}
+
+	empty := newTestCommandDialog(t)
+	empty.SetCommands(nil)
+	if _, cmd := empty.Update(utilComponents.ListActivatedMsg{Index: 0}); cmd != nil {
+		t.Error("no command should run with an empty list")
 	}
 }
