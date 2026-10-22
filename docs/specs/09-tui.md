@@ -223,16 +223,23 @@ Fechar lacunas da TUI: **keybinds configuráveis**, suporte a **mouse/scroll**, 
       corpo da resposta, sem o placeholder "Waiting for response..." e sem os filhos aninhados
       de `task` (agent). Tool calls em execução já são one-liners e não mudam.
     - O toggle limpa o `cachedContent` (todo render cacheado pode embutir uma resposta) e
-      re-renderiza; sem keybind (igual ao TS, que também não define um).
+      re-renderiza; keybind id `tool_details` registrado com default `none` (igual ao TS — o
+      comando `/details` é a forma descobrível).
     - Testes: `message_test.go` (resposta visível/oculta, params preservados), `list_test.go`
       (`TestToggleDetails`).
+  - **Keybinds editor_open/tool_details (09m)** — feito:
+    - `editor_open` (`<leader>e`, igual ao TS) → `leaderOpenEditor` → `chat.OpenEditorMsg`
+      (o editorCmp já tem o guard de sessão ocupada).
+    - `tool_details` (default `none`) → `leaderToggleDetails` → `chat.ToggleDetailsMsg`
+      (permutável via `tui.json`, como no TS).
+    - `applyLeaderBindings` cobre as duas ações; which-key ganha o sufixo `e` ("open editor").
+    - Testes: `leader_test.go`/`keybinds_test.go` (sufixo `e`).
 
 - Pendências conscientes: codificação **sixel** de fato (hoje o protocolo sixel detectado usa o
   fallback half-block, que funciona em qualquer terminal truecolor) e integração de hit-test das
-  demais zonas (sidebar/diálogos); keybinds `editor_open`, `session_copy/timeline/fork` e
-  `prompt_stash*` ainda sem ação; agrupamento do palette por contexto; `/undo`/`/redo` **não**
-  fazem rollback de arquivos via git como no TS nem reexecutam o agent (decisão consciente de
-  escopo, Spec 09k).
+  demais zonas (sidebar/diálogos); keybinds `session_copy/timeline/fork` e `prompt_stash*` ainda
+  sem ação; agrupamento do palette por contexto; `/undo`/`/redo` **não** fazem rollback de
+  arquivos via git como no TS nem reexecutam o agent (decisão consciente de escopo, Spec 09k).
 
 ## Riscos
 

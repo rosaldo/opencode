@@ -2,6 +2,7 @@
 
 > Generated from `git` by `scripts/gen-changelog.sh` — do not edit by hand.
 
+- **v1.13.0** (2026-10-22) · `feat` — tui: editor_open keybind (<leader>e) and tool_details id wired to the leader (09m)
 - **v1.12.0** (2026-10-22) · `feat` — tui: /details collapses tool call outputs to name+params (09l)
 - **v1.11.0** (2026-10-22) · `feat` — tui: /undo /redo without git rollback (09k)
 - **v1.10.0** (2026-10-22) · `feat` — tui: messages_copy keybind copies the focused message to the clipboard (09j)

@@ -34,6 +34,8 @@ const (
 	KeybindMessagesCopy   KeybindID = "messages_copy"
 	KeybindMessagesUndo   KeybindID = "messages_undo"
 	KeybindMessagesRedo   KeybindID = "messages_redo"
+	KeybindEditorOpen     KeybindID = "editor_open"
+	KeybindToolDetails    KeybindID = "tool_details"
 )
 
 // defaultLeader is the default value of the <leader> placeholder.
@@ -71,6 +73,9 @@ var defaultKeybinds = map[KeybindID]string{
 	// The TS default for messages_redo is <leader>r, but that suffix is
 	// taken by session_rename in this fork; "." keeps the vim redo mnemonic.
 	KeybindMessagesRedo: "<leader>.",
+	KeybindEditorOpen:   "<leader>e",
+	// Like the TS default: /details is the discoverable way to toggle it.
+	KeybindToolDetails: noneValue,
 }
 
 // Keybinds is the resolved keymap: each id maps to the list of key strings that

@@ -208,6 +208,8 @@ const (
 	leaderCopyMessage
 	leaderUndoMessage
 	leaderRedoMessage
+	leaderOpenEditor
+	leaderToggleDetails
 )
 
 // leaderSuffixes maps the keystroke pressed after the leader to its action;
@@ -239,6 +241,8 @@ func applyLeaderBindings() {
 		{leaderCopyMessage, KeybindMessagesCopy},
 		{leaderUndoMessage, KeybindMessagesUndo},
 		{leaderRedoMessage, KeybindMessagesRedo},
+		{leaderOpenEditor, KeybindEditorOpen},
+		{leaderToggleDetails, KeybindToolDetails},
 	}
 	leaderSuffixes = make(map[string]leaderAction, len(pairs))
 	leaderDirect = make(map[leaderAction]key.Binding, len(pairs))
@@ -317,6 +321,8 @@ var leaderHints = map[leaderAction]string{
 	leaderCopyMessage:    "copy message",
 	leaderUndoMessage:    "undo message",
 	leaderRedoMessage:    "redo message",
+	leaderOpenEditor:     "open editor",
+	leaderToggleDetails:  "toggle details",
 }
 
 // leaderHintRows lists "suffix  label" pairs sorted by suffix: the which-key
@@ -372,6 +378,10 @@ func (a appModel) runLeaderAction(action leaderAction) (appModel, tea.Cmd) {
 		return a.undoMessage()
 	case leaderRedoMessage:
 		return a.redoMessage()
+	case leaderOpenEditor:
+		return a.updateChatPage(chat.OpenEditorMsg{})
+	case leaderToggleDetails:
+		return a.updateChatPage(chat.ToggleDetailsMsg{})
 	}
 	return a, nil
 }
