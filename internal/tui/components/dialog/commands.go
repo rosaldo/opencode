@@ -22,7 +22,9 @@ type Command struct {
 	ID          string
 	Title       string
 	Description string
-	Handler     func(cmd Command) tea.Cmd
+	// Aliases are extra slash names accepted for this command (Spec 09h).
+	Aliases []string
+	Handler func(cmd Command) tea.Cmd
 }
 
 func (ci Command) Render(selected bool, width int) string {

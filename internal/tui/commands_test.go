@@ -39,4 +39,20 @@ func TestFilterCommands(t *testing.T) {
 			t.Fatal("unknown name should return ok=false")
 		}
 	})
+
+	t.Run("alias match", func(t *testing.T) {
+		withAliases := []dialog.Command{
+			{ID: "exit", Title: "Exit", Aliases: []string{"quit", "q"}},
+			{ID: "new", Title: "New Session", Aliases: []string{"clear"}},
+		}
+		for _, name := range []string{"exit", "Quit", "q", "clear"} {
+			got, ok := filterCommands(withAliases, name)
+			if !ok || len(got) != 1 {
+				t.Fatalf("%q: got %+v ok=%v", name, got, ok)
+			}
+		}
+		if _, ok := filterCommands(withAliases, "Q"); !ok {
+			t.Error("alias lookup must be case insensitive")
+		}
+	})
 }

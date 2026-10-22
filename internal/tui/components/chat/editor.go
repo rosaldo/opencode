@@ -211,6 +211,10 @@ func (m *editorCmp) historyNext() tea.Cmd {
 	return nil
 }
 
+// OpenEditorMsg asks the editor to open $EDITOR (the /editor command,
+// Spec 09h).
+type OpenEditorMsg struct{}
+
 func (m *editorCmp) openEditor() tea.Cmd {
 	tmpfile, err := os.CreateTemp("", "msg_*.md")
 	if err != nil {
@@ -338,6 +342,11 @@ func (m *editorCmp) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case SessionClearedMsg:
 		m.resetHistory()
 		return m, nil
+	case OpenEditorMsg:
+		if m.app != nil && m.app.Agents.IsSessionBusy(m.session.ID) {
+			return m, util.ReportWarn("Agent is working, please wait...")
+		}
+		return m, m.openEditor()
 	case dialog.AttachmentAddedMsg:
 		if len(m.attachments) >= maxAttachments {
 			logging.ErrorPersist(fmt.Sprintf("cannot add more than %d images", maxAttachments))

@@ -169,10 +169,25 @@ Fechar lacunas da TUI: **keybinds configuráveis**, suporte a **mouse/scroll**, 
       e linha no which-key ("export session").
     - Testes: `internal/tui/components/chat/export_test.go` (render + título padrão + tool error),
       `leader_test.go`/`keybinds_test.go` (sufixo `x`).
+  - **Comandos built-in do TUI (09h)** — feito:
+    - `dialog.Command` ganhou `Aliases []string` e `filterCommands`/`matchesCommandName` aceitam
+      id **ou** alias, com maiúsculas/minúsculas ignoradas.
+    - Registrados em `tui.New`: `new` (alias `clear` → `page.NewSessionMsg`), `sessions`
+      (`resume`, `continue`), `models`, `themes`, `help`, `editor` (→ `chat.OpenEditorMsg` →
+      editor abre `$EDITOR` respeitando o busy guard) e `exit` (`quit`, `q` → diálogo de
+      confirmação, igual à tecla `keys.Quit`).
+    - Handlers não alcançam o `appModel`: cada um emite um msg (`showSessionListMsg`,
+      `showModelListMsg`, `showThemeListMsg`, `showHelpMsg`, `showQuitMsg`) tratado no `Update`,
+      que delega aos métodos extraídos do switch de teclas (`openSessionList`, `openModelDialog`,
+      `openThemeDialog`, `openHelp`, `toggleQuit`) — `ctrl+s`/`ctrl+o`/`ctrl+t`/`ctrl+c` agora
+      compartilham o mesmo caminho que os comandos (sem mudança de comportamento).
+    - Testes: `internal/tui/commands_test.go` (alias/case-insensitive).
 
 - Pendências conscientes: codificação **sixel** de fato (hoje o protocolo sixel detectado usa o
   fallback half-block, que funciona em qualquer terminal truecolor) e integração de hit-test das
-  demais zonas (sidebar/diálogos).
+  demais zonas (sidebar/diálogos); comandos `/thinking` e `/details` (sem estado de exibição
+  correspondente); keybinds `editor_open`, `messages_copy/undo/redo`, `session_copy/timeline/fork`
+  e `prompt_stash*` ainda sem ação; agrupamento do palette por contexto.
 
 ## Riscos
 

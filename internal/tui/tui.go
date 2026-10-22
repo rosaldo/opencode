@@ -44,6 +44,16 @@ type keyMap struct {
 
 type startCompactSessionMsg struct{}
 
+// Built-in slash command messages (Spec 09h): a command handler cannot reach
+// the app model, so it raises one of these instead and the model reacts.
+type (
+	showSessionListMsg struct{}
+	showModelListMsg   struct{}
+	showThemeListMsg   struct{}
+	showHelpMsg        struct{}
+	showQuitMsg        struct{}
+)
+
 // leaderTimeoutMsg fires when the leader sequence was not completed in time
 // (Spec 09d). seq tags the tick so a stale one cannot cancel a newer sequence.
 type leaderTimeoutMsg struct {
@@ -330,6 +340,68 @@ func (a appModel) runLeaderAction(action leaderAction) (appModel, tea.Cmd) {
 		return a, util.CmdHandler(startCompactSessionMsg{})
 	case leaderExportSession:
 		return a.exportSession()
+	}
+	return a, nil
+}
+
+// openSessionList loads every session and shows the switcher (ctrl+s and
+// /sessions, Spec 09h).
+func (a appModel) openSessionList() (appModel, tea.Cmd) {
+	if a.currentPage != page.ChatPage || a.showQuit || a.showPermissions || a.showCommandDialog {
+		return a, nil
+	}
+	sessions, err := a.app.Sessions.List(context.Background())
+	if err != nil {
+		return a, util.ReportError(err)
+	}
+	if len(sessions) == 0 {
+		return a, util.ReportWarn("No sessions available")
+	}
+	a.sessionDialog.SetSessions(sessions)
+	a.showSessionDialog = true
+	return a, nil
+}
+
+// openModelDialog shows the model picker (ctrl+o and /models, Spec 09h).
+func (a appModel) openModelDialog() (appModel, tea.Cmd) {
+	if a.currentPage != page.ChatPage || a.showQuit || a.showPermissions ||
+		a.showSessionDialog || a.showCommandDialog {
+		return a, nil
+	}
+	a.showModelDialog = true
+	// Re-init so the dialog reflects the active agent's model.
+	return a, a.modelDialog.Init()
+}
+
+// openThemeDialog shows the theme switcher (ctrl+t and /themes, Spec 09h).
+func (a appModel) openThemeDialog() (appModel, tea.Cmd) {
+	if a.showQuit || a.showPermissions || a.showSessionDialog || a.showCommandDialog {
+		return a, nil
+	}
+	a.showThemeDialog = true
+	// The theme list is dynamically loaded by the dialog component.
+	return a, a.themeDialog.Init()
+}
+
+// openHelp shows the help dialog (/help, Spec 09h).
+func (a appModel) openHelp() (appModel, tea.Cmd) {
+	a.showHelp = true
+	return a, nil
+}
+
+// toggleQuit mirrors the quit key: it closes the other dialogs instead of
+// quitting right away (ctrl+c and /exit, Spec 09h).
+func (a appModel) toggleQuit() (appModel, tea.Cmd) {
+	a.showQuit = !a.showQuit
+	a.showHelp = false
+	a.showSessionDialog = false
+	a.showCommandDialog = false
+	a.showModelDialog = false
+	a.showAgentDialog = false
+	a.showMultiArgumentsDialog = false
+	if a.showFilepicker {
+		a.showFilepicker = false
+		a.filepicker.ToggleFilepicker(false)
 	}
 	return a, nil
 }
@@ -651,6 +723,18 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case exportSessionMsg:
 		return a.exportSession()
 
+	// Built-in slash commands (Spec 09h).
+	case showSessionListMsg:
+		return a.openSessionList()
+	case showModelListMsg:
+		return a.openModelDialog()
+	case showThemeListMsg:
+		return a.openThemeDialog()
+	case showHelpMsg:
+		return a.openHelp()
+	case showQuitMsg:
+		return a.toggleQuit()
+
 	case startCompactSessionMsg:
 		// Start compacting the current session
 		a.isCompacting = true
@@ -891,45 +975,9 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch {
 
 		case key.Matches(msg, keys.Quit):
-			a.showQuit = !a.showQuit
-			if a.showHelp {
-				a.showHelp = false
-			}
-			if a.showSessionDialog {
-				a.showSessionDialog = false
-			}
-			if a.showCommandDialog {
-				a.showCommandDialog = false
-			}
-			if a.showFilepicker {
-				a.showFilepicker = false
-				a.filepicker.ToggleFilepicker(a.showFilepicker)
-			}
-			if a.showModelDialog {
-				a.showModelDialog = false
-			}
-			if a.showAgentDialog {
-				a.showAgentDialog = false
-			}
-			if a.showMultiArgumentsDialog {
-				a.showMultiArgumentsDialog = false
-			}
-			return a, nil
+			return a.toggleQuit()
 		case key.Matches(msg, keys.SwitchSession):
-			if a.currentPage == page.ChatPage && !a.showQuit && !a.showPermissions && !a.showCommandDialog {
-				// Load sessions and show the dialog
-				sessions, err := a.app.Sessions.List(context.Background())
-				if err != nil {
-					return a, util.ReportError(err)
-				}
-				if len(sessions) == 0 {
-					return a, util.ReportWarn("No sessions available")
-				}
-				a.sessionDialog.SetSessions(sessions)
-				a.showSessionDialog = true
-				return a, nil
-			}
-			return a, nil
+			return a.openSessionList()
 		case key.Matches(msg, keys.Commands):
 			if a.currentPage == page.ChatPage && !a.showQuit && !a.showPermissions && !a.showSessionDialog && !a.showThemeDialog && !a.showFilepicker {
 				return a, a.openCommandDialog("")
@@ -945,12 +993,7 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				a.showModelDialog = false
 				return a, nil
 			}
-			if a.currentPage == page.ChatPage && !a.showQuit && !a.showPermissions && !a.showSessionDialog && !a.showCommandDialog {
-				a.showModelDialog = true
-				// Re-init so the dialog reflects the active agent's model
-				return a, a.modelDialog.Init()
-			}
-			return a, nil
+			return a.openModelDialog()
 		case key.Matches(msg, keys.SwitchAgent):
 			if a.showAgentDialog {
 				a.showAgentDialog = false
@@ -962,13 +1005,7 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return a, nil
 		case key.Matches(msg, keys.SwitchTheme):
-			if !a.showQuit && !a.showPermissions && !a.showSessionDialog && !a.showCommandDialog {
-				// Show theme switcher dialog
-				a.showThemeDialog = true
-				// Theme list is dynamically loaded by the dialog component
-				return a, a.themeDialog.Init()
-			}
-			return a, nil
+			return a.openThemeDialog()
 		case key.Matches(msg, returnKey) || key.Matches(msg):
 			if msg.String() == quitKey {
 				if a.currentPage == page.LogsPage {
@@ -1163,16 +1200,17 @@ func (a *appModel) openCommandDialog(name string) tea.Cmd {
 	return a.commandDialog.Init()
 }
 
-// filterCommands narrows commands to the one matching a slash name. An empty
-// name returns the whole list. ok is false when a name was given but nothing
-// matched (so the caller can warn about an unknown command).
+// filterCommands narrows commands to the one matching a slash name. An alias
+// of a command matches too (Spec 09h). An empty name returns the whole list. ok
+// is false when a name was given but nothing matched (so the caller can warn
+// about an unknown command).
 func filterCommands(commands []dialog.Command, name string) ([]dialog.Command, bool) {
 	if name == "" {
 		return commands, true
 	}
 	matched := make([]dialog.Command, 0, len(commands))
 	for _, c := range commands {
-		if strings.EqualFold(c.ID, name) {
+		if matchesCommandName(c, name) {
 			matched = append(matched, c)
 		}
 	}
@@ -1180,6 +1218,19 @@ func filterCommands(commands []dialog.Command, name string) ([]dialog.Command, b
 		return nil, false
 	}
 	return matched, true
+}
+
+// matchesCommandName reports whether name is the id or an alias of c.
+func matchesCommandName(c dialog.Command, name string) bool {
+	if strings.EqualFold(c.ID, name) {
+		return true
+	}
+	for _, alias := range c.Aliases {
+		if strings.EqualFold(alias, name) {
+			return true
+		}
+	}
+	return false
 }
 
 // pluginInfos builds the view model for the plugins dialog from the loaded
@@ -1568,6 +1619,66 @@ If there are Cursor rules (in .cursor/rules/ or .cursorrules) or Copilot rules (
 		Description: "Export the conversation to Markdown and open it in your editor",
 		Handler: func(cmd dialog.Command) tea.Cmd {
 			return util.CmdHandler(exportSessionMsg{})
+		},
+	})
+
+	model.RegisterCommand(dialog.Command{
+		ID:          "new",
+		Title:       "New Session",
+		Description: "Start a new session",
+		Aliases:     []string{"clear"},
+		Handler: func(cmd dialog.Command) tea.Cmd {
+			return util.CmdHandler(page.NewSessionMsg{})
+		},
+	})
+	model.RegisterCommand(dialog.Command{
+		ID:          "sessions",
+		Title:       "Switch Session",
+		Description: "List and switch between sessions",
+		Aliases:     []string{"resume", "continue"},
+		Handler: func(cmd dialog.Command) tea.Cmd {
+			return util.CmdHandler(showSessionListMsg{})
+		},
+	})
+	model.RegisterCommand(dialog.Command{
+		ID:          "models",
+		Title:       "Select Model",
+		Description: "List the available models",
+		Handler: func(cmd dialog.Command) tea.Cmd {
+			return util.CmdHandler(showModelListMsg{})
+		},
+	})
+	model.RegisterCommand(dialog.Command{
+		ID:          "themes",
+		Title:       "Select Theme",
+		Description: "List the available themes",
+		Handler: func(cmd dialog.Command) tea.Cmd {
+			return util.CmdHandler(showThemeListMsg{})
+		},
+	})
+	model.RegisterCommand(dialog.Command{
+		ID:          "help",
+		Title:       "Show Help",
+		Description: "Show the keyboard shortcuts",
+		Handler: func(cmd dialog.Command) tea.Cmd {
+			return util.CmdHandler(showHelpMsg{})
+		},
+	})
+	model.RegisterCommand(dialog.Command{
+		ID:          "editor",
+		Title:       "External Editor",
+		Description: "Compose the message in your $EDITOR",
+		Handler: func(cmd dialog.Command) tea.Cmd {
+			return util.CmdHandler(chat.OpenEditorMsg{})
+		},
+	})
+	model.RegisterCommand(dialog.Command{
+		ID:          "exit",
+		Title:       "Exit OpenCode",
+		Description: "Leave the TUI (asks for confirmation)",
+		Aliases:     []string{"quit", "q"},
+		Handler: func(cmd dialog.Command) tea.Cmd {
+			return util.CmdHandler(showQuitMsg{})
 		},
 	})
 
