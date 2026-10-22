@@ -333,10 +333,22 @@ Fechar lacunas da TUI: **keybinds configuráveis**, suporte a **mouse/scroll**, 
       preview, tempo relativo, Enter/Esc/clique, dois passos do delete, desarm por
       movimento/busca, delete sob filtro, footer), `keybinds_test.go`/`leader_test.go`
       (defaults desabilitados, sufixos `i`/`o`/`p`).
+  - **Clique/scroll em agents e plugins (09r)** — feito:
+    - `dialog/agents.go`: zonas por linha com índice absoluto (`ad:`, helpers
+      `ListZoneID`/`ListClickedRow`) + `selectAgent(idx)` compartilhado por Enter e clique —
+      valida faixa, move a seleção e emite `AgentSelectedMsg`; clique fora de linha (ou sem
+      zona renderizada) é engolido, sem cair na página. O wheel (traduzido em up/down) agora
+      também move a seleção do switcher.
+    - `dialog/plugins.go`: diálogo informativo (sem linhas acionáveis) consome `MouseMsg` para
+      o clique não atravessar para a página atrás; Esc continua fechando.
+    - `tui.go`: `forwardMouseClick` e a cadeia de wheel ganham os ramos
+      `showAgentDialog`/`showPluginsDialog` antes do fallback da página.
+    - Testes: `mouse_test.go` (`TestAgentDialogClickRow`, lista vazia, engolir
+      clique/motion, `TestPluginsDialogConsumesMouse` com Esc preservado).
 
 - Pendências conscientes: codificação **sixel** de fato (hoje o protocolo sixel detectado usa o
-  fallback half-block, que funciona em qualquer terminal truecolor); cliques de mouse nos
-  diálogos de agents/plugins ainda sem hit-test (Spec 09n); o   diálogo de timeline do TS também
+  fallback half-block, que funciona em qualquer terminal truecolor); o
+  diálogo de timeline do TS também
   abre um "Message Actions" (Jump to / Revert / Copy / Fork) na seleção — aqui Enter pula
   direto até que Revert exista (Fork já existe via `/fork`/`session_fork`); keybind
   `session_move` ainda sem ação; agrupamento

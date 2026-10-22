@@ -2,6 +2,7 @@
 
 > Generated from `git` by `scripts/gen-changelog.sh` — do not edit by hand.
 
+- **v1.18.0** (2026-10-22) · `feat` — tui: mouse click and scroll for agents/plugins dialogs (09r)
 - **v1.17.0** (2026-10-22) · `feat` — tui: prompt stash (09q)
 - **v1.16.0** (2026-10-22) · `feat` — tui: session fork from message (09p)
 - **v1.15.0** (2026-10-22) · `feat` — tui: session timeline dialog and copy session transcript (09o)

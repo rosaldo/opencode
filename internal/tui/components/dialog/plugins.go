@@ -65,6 +65,10 @@ func (p *pluginsCmp) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if key.Matches(msg, pluginsKeys.Escape) {
 			return p, util.CmdHandler(ClosePluginsDialogMsg{})
 		}
+	case tea.MouseMsg:
+		// Informational dialog without selectable rows: consume the click so
+		// it never falls through to the page behind (Spec 09n).
+		return p, nil
 	}
 	return p, nil
 }

@@ -470,6 +470,16 @@ func (a *appModel) forwardMouseClick(msg tea.MouseMsg) tea.Cmd {
 		a.stashDialog = d.(dialog.StashDialog)
 		return cmd
 	}
+	if a.showAgentDialog {
+		d, cmd := a.agentDialog.Update(msg)
+		a.agentDialog = d.(dialog.AgentDialog)
+		return cmd
+	}
+	if a.showPluginsDialog {
+		d, cmd := a.pluginsDialog.Update(msg)
+		a.pluginsDialog = d.(dialog.PluginsDialog)
+		return cmd
+	}
 	var cmd tea.Cmd
 	a.pages[a.currentPage], cmd = a.pages[a.currentPage].Update(msg)
 	return cmd
@@ -871,6 +881,16 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if a.showStashDialog {
 			d, cmd := a.stashDialog.Update(keyMsg)
 			a.stashDialog = d.(dialog.StashDialog)
+			return a, cmd
+		}
+		if a.showAgentDialog {
+			d, cmd := a.agentDialog.Update(keyMsg)
+			a.agentDialog = d.(dialog.AgentDialog)
+			return a, cmd
+		}
+		if a.showPluginsDialog {
+			d, cmd := a.pluginsDialog.Update(keyMsg)
+			a.pluginsDialog = d.(dialog.PluginsDialog)
 			return a, cmd
 		}
 		a.pages[a.currentPage], cmd = a.pages[a.currentPage].Update(keyMsg)

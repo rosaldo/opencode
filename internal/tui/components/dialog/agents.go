@@ -11,6 +11,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	fuzzy "github.com/lithammer/fuzzysearch/fuzzy"
 	"github.com/opencode-ai/opencode/internal/agentdef"
+	utilComponents "github.com/opencode-ai/opencode/internal/tui/components/util"
 	"github.com/opencode-ai/opencode/internal/tui/layout"
 	"github.com/opencode-ai/opencode/internal/tui/styles"
 	"github.com/opencode-ai/opencode/internal/tui/theme"
@@ -46,7 +47,11 @@ type agentDialogCmp struct {
 	selectedIdx  int
 	scrollOffset int
 	activeAgent  func() string
+	zones        util.ZoneSet
 }
+
+// agentZonePrefix namespaces the mouse zones of the agent rows (Spec 09n).
+const agentZonePrefix = "ad:"
 
 type agentKeyMap struct {
 	Up     key.Binding
@@ -112,11 +117,7 @@ func (m *agentDialogCmp) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, agentKeys.Escape):
 			return m, util.CmdHandler(CloseAgentsDialogMsg{})
 		case key.Matches(msg, agentKeys.Enter):
-			if len(m.filteredIdx) == 0 {
-				return m, nil
-			}
-			name := m.agents[m.filteredIdx[m.selectedIdx]].Name
-			return m, util.CmdHandler(AgentSelectedMsg{Name: name})
+			return m.selectAgent(m.selectedIdx)
 		case key.Matches(msg, agentKeys.Up):
 			m.moveSelection(-1)
 			return m, nil
@@ -128,10 +129,32 @@ func (m *agentDialogCmp) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.input, cmd = m.input.Update(msg)
 		m.applyFilter()
 		return m, cmd
+	case tea.MouseMsg:
+		// A left click on a row selects and activates that agent (Spec 09n).
+		// Clicks elsewhere are swallowed so they never fall through to the
+		// page behind the dialog.
+		if msg.Action == tea.MouseActionPress && msg.Button == tea.MouseButtonLeft {
+			if idx, ok := utilComponents.ListClickedRow(&m.zones, agentZonePrefix, msg); ok {
+				return m.selectAgent(idx)
+			}
+		}
+		return m, nil
 	case tea.WindowSizeMsg:
 		return m, nil
 	}
 	return m, nil
+}
+
+// selectAgent selects the visible row at idx (absolute index into
+// filteredIdx) and activates it, same as Enter. Out-of-range indexes are
+// ignored (Spec 09n).
+func (m *agentDialogCmp) selectAgent(idx int) (tea.Model, tea.Cmd) {
+	if idx < 0 || idx >= len(m.filteredIdx) {
+		return m, nil
+	}
+	m.selectedIdx = idx
+	name := m.agents[m.filteredIdx[idx]].Name
+	return m, util.CmdHandler(AgentSelectedMsg{Name: name})
 }
 
 func (m *agentDialogCmp) moveSelection(delta int) {
@@ -209,6 +232,7 @@ func (m *agentDialogCmp) View() string {
 
 	endIdx := min(m.scrollOffset+numVisibleAgents, len(m.filteredIdx))
 	items := make([]string, 0, endIdx-m.scrollOffset)
+	m.zones.Reset()
 	for row := m.scrollOffset; row < endIdx; row++ {
 		def := m.agents[m.filteredIdx[row]]
 		label := def.Name
@@ -226,7 +250,12 @@ func (m *agentDialogCmp) View() string {
 			itemStyle = itemStyle.Background(t.Primary()).
 				Foreground(t.Background()).Bold(true)
 		}
-		items = append(items, itemStyle.Render(label))
+		// The zone carries the absolute index so a click maps back even while
+		// the list is windowed (Spec 09n).
+		items = append(items, m.zones.Mark(
+			utilComponents.ListZoneID(agentZonePrefix, row),
+			itemStyle.Render(label),
+		))
 	}
 
 	var indicator string
