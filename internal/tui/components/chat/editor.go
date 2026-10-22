@@ -33,12 +33,21 @@ type editorCmp struct {
 	deleteMode  bool
 	// shellMode is true while the prompt is composing a "!cmd" shell passthrough.
 	shellMode bool
+	// history holds the prompts sent in this session (oldest first) for the
+	// history_previous/history_next bindings (Spec 09f). historyIdx == len(history)
+	// means the live draft is in the textarea; historyDraft keeps the draft the
+	// user was typing when they started walking back.
+	history      []string
+	historyIdx   int
+	historyDraft string
 }
 
 type EditorKeyMaps struct {
-	Send       key.Binding
-	OpenEditor key.Binding
-	Paste      key.Binding
+	Send            key.Binding
+	OpenEditor      key.Binding
+	Paste           key.Binding
+	HistoryPrevious key.Binding
+	HistoryNext     key.Binding
 }
 
 type bluredEditorKeyMaps struct {
@@ -64,6 +73,14 @@ var editorMaps = EditorKeyMaps{
 	Paste: key.NewBinding(
 		key.WithKeys("ctrl+v"),
 		key.WithHelp("ctrl+v", "paste image"),
+	),
+	HistoryPrevious: key.NewBinding(
+		key.WithKeys("up"),
+		key.WithHelp("up", "previous prompt"),
+	),
+	HistoryNext: key.NewBinding(
+		key.WithKeys("down"),
+		key.WithHelp("down", "next prompt"),
 	),
 }
 
@@ -96,6 +113,102 @@ func SetPromptPasteKeybind(bound []string) {
 		key.WithKeys(bound...),
 		key.WithHelp(bound[0], "paste image"),
 	)
+}
+
+// SetHistoryKeybinds replaces the prompt history bindings so the keys come from
+// `tui.keybinds.history_previous`/`history_next` instead of the hardcoded
+// up/down (Spec 09f). A disabled binding (empty list) is left unbound.
+func SetHistoryKeybinds(previous, next []string) {
+	if len(previous) > 0 {
+		editorMaps.HistoryPrevious = key.NewBinding(
+			key.WithKeys(previous...),
+			key.WithHelp(previous[0], "previous prompt"),
+		)
+	} else {
+		editorMaps.HistoryPrevious = key.NewBinding()
+	}
+	if len(next) > 0 {
+		editorMaps.HistoryNext = key.NewBinding(
+			key.WithKeys(next...),
+			key.WithHelp(next[0], "next prompt"),
+		)
+	} else {
+		editorMaps.HistoryNext = key.NewBinding()
+	}
+}
+
+// recordHistory appends a sent prompt to this session's history, collapsing a
+// repeat of the newest entry, and returns the prompt index to the live draft.
+func (m *editorCmp) recordHistory(text string) {
+	if text == "" {
+		return
+	}
+	if len(m.history) > 0 && m.history[len(m.history)-1] == text {
+		m.historyIdx = len(m.history)
+		m.historyDraft = ""
+		return
+	}
+	m.history = append(m.history, text)
+	m.historyIdx = len(m.history)
+	m.historyDraft = ""
+}
+
+// resetHistory drops the prompt history, e.g. when the session changes.
+func (m *editorCmp) resetHistory() {
+	m.history = nil
+	m.historyIdx = 0
+	m.historyDraft = ""
+}
+
+// canHistoryPrevious reports whether the history_previous key should walk back.
+// While the live draft is shown it only applies to a single-line prompt: the
+// bubbles textarea does not expose the cursor row, so on a multi-line prompt up
+// must keep moving the cursor. Once browsing, further up always continues back
+// even when the restored prompt is multi-line.
+func (m *editorCmp) canHistoryPrevious() bool {
+	if m.deleteMode || m.shellMode || len(m.history) == 0 || !m.textarea.Focused() {
+		return false
+	}
+	if m.historyIdx < len(m.history) {
+		return true
+	}
+	return m.textarea.LineCount() <= 1
+}
+
+// canHistoryNext reports whether the history_next key should walk forward.
+func (m *editorCmp) canHistoryNext() bool {
+	return !m.deleteMode && !m.shellMode && m.textarea.Focused() &&
+		len(m.history) > 0 && m.historyIdx < len(m.history)
+}
+
+// historyPrevious shows the prompt sent before the one on screen, remembering
+// the live draft the first time it moves away from it.
+func (m *editorCmp) historyPrevious() tea.Cmd {
+	if m.historyIdx >= len(m.history) {
+		m.historyDraft = m.textarea.Value()
+	}
+	if m.historyIdx > 0 {
+		m.historyIdx--
+	}
+	m.textarea.SetValue(m.history[m.historyIdx])
+	m.textarea.CursorEnd()
+	return nil
+}
+
+// historyNext walks towards the newest prompt and restores the live draft at
+// the end of the history.
+func (m *editorCmp) historyNext() tea.Cmd {
+	if m.historyIdx >= len(m.history) {
+		return nil
+	}
+	m.historyIdx++
+	if m.historyIdx == len(m.history) {
+		m.textarea.SetValue(m.historyDraft)
+	} else {
+		m.textarea.SetValue(m.history[m.historyIdx])
+	}
+	m.textarea.CursorEnd()
+	return nil
 }
 
 func (m *editorCmp) openEditor() tea.Cmd {
@@ -165,6 +278,7 @@ func (m *editorCmp) send() tea.Cmd {
 	if value == "" {
 		return nil
 	}
+	m.recordHistory(value)
 	clean, mentioned := m.mention(value)
 	return tea.Batch(
 		util.CmdHandler(SendMsg{
@@ -226,7 +340,11 @@ func (m *editorCmp) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case SessionSelectedMsg:
 		if msg.ID != m.session.ID {
 			m.session = msg
+			m.resetHistory()
 		}
+		return m, nil
+	case SessionClearedMsg:
+		m.resetHistory()
 		return m, nil
 	case dialog.AttachmentAddedMsg:
 		if len(m.attachments) >= maxAttachments {
@@ -268,6 +386,13 @@ func (m *editorCmp) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if key.Matches(msg, editorMaps.Paste) {
 			return m, util.CmdHandler(m.pasteClipboard())
+		}
+		// Prompt history (Spec 09f): walk the prompts sent in this session.
+		if m.canHistoryPrevious() && key.Matches(msg, editorMaps.HistoryPrevious) {
+			return m, m.historyPrevious()
+		}
+		if m.canHistoryNext() && key.Matches(msg, editorMaps.HistoryNext) {
+			return m, m.historyNext()
 		}
 		if key.Matches(msg, DeleteKeyMaps.Escape) {
 			m.deleteMode = false

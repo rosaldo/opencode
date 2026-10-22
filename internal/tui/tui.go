@@ -178,6 +178,9 @@ func applyKeybinds() {
 	applyLeaderBindings()
 	// The editor owns the paste key and cannot see the package keymap.
 	chat.SetPromptPasteKeybind(resolvedKeybinds.Keys(KeybindPromptPaste))
+	// Same for the prompt history keys (Spec 09f).
+	chat.SetHistoryKeybinds(resolvedKeybinds.Keys(KeybindHistoryPrev),
+		resolvedKeybinds.Keys(KeybindHistoryNext))
 }
 
 // leaderAction is a TUI action addressable through the <leader> sequence

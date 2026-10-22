@@ -27,6 +27,8 @@ const (
 	KeybindLogsToggle     KeybindID = "logs_toggle"
 	KeybindFilePicker     KeybindID = "file_picker"
 	KeybindSessionCompact KeybindID = "session_compact"
+	KeybindHistoryPrev    KeybindID = "history_previous"
+	KeybindHistoryNext    KeybindID = "history_next"
 )
 
 // defaultLeader is the default value of the <leader> placeholder.
@@ -54,6 +56,8 @@ var defaultKeybinds = map[KeybindID]string{
 	KeybindLogsToggle:     "ctrl+l",
 	KeybindFilePicker:     "ctrl+f",
 	KeybindSessionCompact: "<leader>c",
+	KeybindHistoryPrev:    "up",
+	KeybindHistoryNext:    "down",
 }
 
 // Keybinds is the resolved keymap: each id maps to the list of key strings that

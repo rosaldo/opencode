@@ -34,7 +34,7 @@ Fechar lacunas da TUI: **keybinds configuráveis**, suporte a **mouse/scroll**, 
 - Mapa nome→binding com defaults; `<leader>` e combos; `"none"`/`false` desabilita.
 - Definir o conjunto de IDs (subset do TS): `app_exit`, `command_list`, `agent_list`,
   `session_list/new/rename/delete/interrupt/compact`, `model_list`, `theme_list`,
-  `sidebar_toggle`, `prompt_paste`, etc.
+  `sidebar_toggle`, `prompt_paste`, `history_previous/next`, etc.
 - Merge sobre defaults; IDs desconhecidos rejeitados com aviso.
 
 ### Mouse
@@ -143,6 +143,20 @@ Fechar lacunas da TUI: **keybinds configuráveis**, suporte a **mouse/scroll**, 
       alterna, invalida o cache (`cachedContent`) e re-renderiza.
     - Testes: `internal/tui/components/chat/message_test.go` (recolhido/expandido, ordem dos
       blocos, zona e posição).
+  - **Histórico de prompt (09f)** — feito:
+    - IDs `history_previous`/`history_next` (defaults `up`/`down`, como no TS) em `keybinds.go`;
+      `applyKeybinds` chama `chat.SetHistoryKeybinds`, no mesmo padrão do `prompt_paste`
+      (`none` desliga a navegação).
+    - `editorCmp.history` guarda os prompts enviados na **sessão atual** (`recordHistory` colapsa
+      repetição imediata); `historyIdx == len(history)` = rascunho vivo e `historyDraft` guarda o
+      texto digitado quando o usuário volta no histórico. Trocar/limpar sessão zera o histórico
+      (`SessionSelectedMsg`/`SessionClearedMsg`).
+    - `up` assume o histórico só com prompt de **uma linha** no rascunho (o textarea do bubbles não
+      expõe a linha do cursor, então em prompt multilinha `up` segue movendo o cursor); em modo
+      delete/shell ou com o prompt desfocado nada navega, e uma vez voltando, `up` continua mesmo
+      com o histórico multilinha restaurado. `down` só anda com histórico a percorrer e restaura o
+      rascunho ao fim.
+    - Testes: `internal/tui/components/chat/editor_history_test.go`.
 
 - Pendências conscientes: codificação **sixel** de fato (hoje o protocolo sixel detectado usa o
   fallback half-block, que funciona em qualquer terminal truecolor) e integração de hit-test das
