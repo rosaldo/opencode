@@ -95,8 +95,8 @@ Fechar lacunas da TUI: **keybinds configuráveis**, suporte a **mouse/scroll**, 
   - **Imagens/kitty/sixel + hyperlink** (09b): `internal/tui/util/terminal_image.go` —
     `DetectImageProtocol` (kitty ≫ sixel ≫ half-block) e `RenderHalfBlocks` (truecolor `▀`),
     `KittyGraphics` (chunks base64 da graphics protocol), `Hyperlink` (OSC 8) e `SniffImageBytes`.
-    `message.go` (`renderUserMessage`) desenha anexos de imagem inline (kitty quando disponível,
-    senão half-blocks) e transforma o chip de arquivo num hyperlink `file://` clicável. Testes:
+    `message.go` (`renderUserMessage`) desenha anexos de imagem inline (kitty/sixel quando
+    disponível, senão half-blocks) e transforma o chip de arquivo num hyperlink `file://` clicável. Testes:
     `internal/tui/util/terminal_image_test.go`.
   - **Hit-test de zonas** (09b): `internal/tui/util/zones.go` (`ZoneSet` sobre o `bubblezone`
     global; `Mark` registra/decora, `At` resolve o id sob o cursor). A lista de mensagens
@@ -366,9 +366,28 @@ Fechar lacunas da TUI: **keybinds configuráveis**, suporte a **mouse/scroll**, 
     - Adaptações conscientes: sem linha em branco entre grupos (o TS usa gap de 1 linha) e
       sem footer de categoria na linha filtrada; a ordem dos grupos segue a primeira
       aparição no registro nosso (o TS segue a ordem do Keymap).
+  - **Codificação sixel real (09t)** — feito:
+    - `internal/tui/util/sixel.go`: `RenderSixel(img, cols, rows)` emite um DCS
+      `ESC P q "1;1;w;h ... ST` — paleta por cube 6×6×6 (até 216 entradas, cada nível
+      convertido para percent `0/20/40/60/80/100` que o terminal mapeia de volta ao valor
+      exato), bandas de 6 pixels, RLE (`!n<c>`) para corridas ≥ 4, `$`/`-` entre cores e
+      bandas, pixels transparentes omitidos. Tamanho em pixels = células × 10×20 (mesma
+      proporção 1:2 do half-block, células do terminal em geral ~10×20 — documentado como
+      suposição; sem query de métricas da fonte).
+    - `message.go`: `case util.ImageSixel` roteia anexos para `RenderSixel`, caindo para
+      half-blocks se a imagem for vazia. Sequência pura, sem avanço de cursor — terminais
+      com DECSDM ligado (default em xterm/foot/mlterm/WezTerm) já posicionam abaixo da
+      imagem, igual ao tratamento do kitty.
+    - Testes: `sixel_test.go` — golden byte-a-byte (sólido 10×20 = 4 bandas + RLE),
+      entradas vazias/transparentes, stripes sem RLE, **round-trip** (decode do payload de
+      volta a pixels e comparação com o quantizador, com verificação de largura exata de
+      cada strip, sobreposição de cores e percents do palette) e contagem de bandas;
+      `message_test.go` — roteamento por `TERM=xterm-sixel` vs fallback half-block.
+    - Adaptação consciente: paleta de 216 cores (banding leve em fotos) em troca de
+      resolução real do protocolo; escalonamento de texto/cursor é responsabilidade do
+      terminal.
 
-- Pendências conscientes: codificação **sixel** de fato (hoje o protocolo sixel detectado usa o
-  fallback half-block, que funciona em qualquer terminal truecolor); o
+- Pendências conscientes: o
   diálogo de timeline do TS também
   abre um "Message Actions" (Jump to / Revert / Copy / Fork) na seleção — aqui Enter pula
   direto até que Revert exista (Fork já existe via `/fork`/`session_fork`); keybind

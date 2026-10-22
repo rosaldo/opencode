@@ -174,7 +174,8 @@ const maxImageWidth = 60
 // renderAttachmentImage draws an image attachment inline when the content is an
 // image and the terminal can display one, returning "" otherwise so the caller
 // falls back to a filename chip (Spec 09). Kitty terminals get the graphics
-// protocol; every other capable terminal gets truecolor half-blocks.
+// protocol, sixel-capable terminals get a sixel DCS (Spec 09t), and every
+// other capable terminal gets truecolor half-blocks.
 func renderAttachmentImage(attachment message.BinaryContent, width int) string {
 	data := attachment.Data
 	if len(data) == 0 && attachment.Path != "" {
@@ -214,6 +215,10 @@ func renderAttachmentImage(attachment message.BinaryContent, width int) string {
 	switch util.DetectImageProtocol(os.Getenv) {
 	case util.ImageKitty:
 		if out := util.KittyGraphics(data, cols, rows); out != "" {
+			return out
+		}
+	case util.ImageSixel:
+		if out := util.RenderSixel(img, cols, rows); out != "" {
 			return out
 		}
 	}

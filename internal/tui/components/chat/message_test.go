@@ -1,6 +1,10 @@
 package chat
 
 import (
+	"bytes"
+	"image"
+	"image/color"
+	"image/png"
 	"strings"
 	"testing"
 
@@ -195,5 +199,55 @@ func TestUiMessageZoneDefault(t *testing.T) {
 	u.zoneID = "think:abc"
 	if got := u.zone(); got != "think:abc" {
 		t.Errorf("zone() = %q, want think:abc", got)
+	}
+}
+
+func TestRenderAttachmentImageSixel(t *testing.T) {
+	t.Setenv("TERM", "xterm-sixel")
+	t.Setenv("TERM_PROGRAM", "")
+	t.Setenv("KITTY_WINDOW_ID", "")
+	t.Setenv("SIXEL_SUPPORT", "1")
+
+	img := image.NewRGBA(image.Rect(0, 0, 20, 20))
+	for y := 0; y < 20; y++ {
+		for x := 0; x < 20; x++ {
+			img.Set(x, y, color.RGBA{R: 255, A: 255})
+		}
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatal(err)
+	}
+	out := renderAttachmentImage(message.BinaryContent{Data: buf.Bytes(), MIMEType: "image/png"}, 40)
+	if !strings.HasPrefix(out, "\x1bPq") {
+		t.Errorf("sixel terminal must get a sixel DCS, got %q", out)
+	}
+	if !strings.HasSuffix(out, "\x1b\\") {
+		t.Errorf("sixel DCS must end with ST, got %q", out)
+	}
+	if strings.Contains(out, "▀") {
+		t.Errorf("sixel terminal must not fall back to half-blocks: %q", out)
+	}
+}
+
+func TestRenderAttachmentImageHalfBlockFallback(t *testing.T) {
+	t.Setenv("TERM", "xterm-256color")
+	t.Setenv("TERM_PROGRAM", "")
+	t.Setenv("KITTY_WINDOW_ID", "")
+	t.Setenv("SIXEL_SUPPORT", "")
+
+	img := image.NewRGBA(image.Rect(0, 0, 20, 20))
+	for y := 0; y < 20; y++ {
+		for x := 0; x < 20; x++ {
+			img.Set(x, y, color.RGBA{B: 255, A: 255})
+		}
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatal(err)
+	}
+	out := renderAttachmentImage(message.BinaryContent{Data: buf.Bytes(), MIMEType: "image/png"}, 40)
+	if !strings.Contains(out, "▀") {
+		t.Errorf("plain terminal must fall back to half-blocks, got %q", out)
 	}
 }
