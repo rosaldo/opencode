@@ -242,6 +242,8 @@ func renderAssistantMessage(
 	thinkingExpanded bool,
 	// showThinking hides the reasoning block entirely (Spec 09i, /thinking).
 	showThinking bool,
+	// showDetails hides tool execution outputs (Spec 09l, /details).
+	showDetails bool,
 	isSummary bool,
 	width int,
 	position int,
@@ -330,6 +332,7 @@ func renderAssistantMessage(
 			messagesService,
 			focusedUIMessageId,
 			false,
+			showDetails,
 			width,
 			i+1,
 		)
@@ -676,6 +679,9 @@ func renderToolMessage(
 	messagesService message.Service,
 	focusedUIMessageId string,
 	nested bool,
+	// showDetails=false collapses the finished tool call to its name and
+	// params: no response body and no nested agent children (Spec 09l).
+	showDetails bool,
 	width int,
 	position int,
 ) uiMessage {
@@ -718,15 +724,17 @@ func renderToolMessage(
 
 	params := renderToolParams(width-2-lipgloss.Width(toolNameText), toolCall)
 	responseContent := ""
-	if response != nil {
-		responseContent = renderToolResponse(toolCall, *response, width-2)
-		responseContent = strings.TrimSuffix(responseContent, "\n")
-	} else {
-		responseContent = baseStyle.
-			Italic(true).
-			Width(width - 2).
-			Foreground(t.TextMuted()).
-			Render("Waiting for response...")
+	if showDetails {
+		if response != nil {
+			responseContent = renderToolResponse(toolCall, *response, width-2)
+			responseContent = strings.TrimSuffix(responseContent, "\n")
+		} else {
+			responseContent = baseStyle.
+				Italic(true).
+				Width(width - 2).
+				Foreground(t.TextMuted()).
+				Render("Waiting for response...")
+		}
 	}
 
 	parts := []string{}
@@ -748,14 +756,14 @@ func renderToolMessage(
 		parts = append(parts, lipgloss.JoinHorizontal(lipgloss.Left, prefix, toolNameText, formattedParams))
 	}
 
-	if toolCall.Name == agent.AgentToolName {
+	if showDetails && toolCall.Name == agent.AgentToolName {
 		taskMessages, _ := messagesService.List(context.Background(), toolCall.ID)
 		toolCalls := []message.ToolCall{}
 		for _, v := range taskMessages {
 			toolCalls = append(toolCalls, v.ToolCalls()...)
 		}
 		for _, call := range toolCalls {
-			rendered := renderToolMessage(call, []message.Message{}, messagesService, focusedUIMessageId, true, width, 0)
+			rendered := renderToolMessage(call, []message.Message{}, messagesService, focusedUIMessageId, true, showDetails, width, 0)
 			parts = append(parts, rendered.content)
 		}
 	}

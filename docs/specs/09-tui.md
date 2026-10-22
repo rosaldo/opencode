@@ -217,13 +217,22 @@ Fechar lacunas da TUI: **keybinds configuráveis**, suporte a **mouse/scroll**, 
       quando dois keybinds disputam o mesmo sufixo (o primeiro da lista vence).
     - Testes: `undo_test.go` (`lastUserMessageIndex`, `stripFinishParts`), `editor_history_test.go`
       (`RestorePromptMsg` respeita draft), `leader_test.go`/`keybinds_test.go` (`u`/`.`).
+  - **Detalhes de tool (09l)** — feito:
+    - `/details` → `chat.ToggleDetailsMsg` → `messagesCmp.showDetails` (default **visível**):
+      quando oculto, tool calls finalizados renderizam só `nome: params` (uma linha) — sem o
+      corpo da resposta, sem o placeholder "Waiting for response..." e sem os filhos aninhados
+      de `task` (agent). Tool calls em execução já são one-liners e não mudam.
+    - O toggle limpa o `cachedContent` (todo render cacheado pode embutir uma resposta) e
+      re-renderiza; sem keybind (igual ao TS, que também não define um).
+    - Testes: `message_test.go` (resposta visível/oculta, params preservados), `list_test.go`
+      (`TestToggleDetails`).
 
 - Pendências conscientes: codificação **sixel** de fato (hoje o protocolo sixel detectado usa o
   fallback half-block, que funciona em qualquer terminal truecolor) e integração de hit-test das
-  demais zonas (sidebar/diálogos); comando `/details` (sem estado de detalhes de tool
-  correspondente); keybinds `editor_open`, `session_copy/timeline/fork` e `prompt_stash*` ainda
-  sem ação; agrupamento do palette por contexto; `/undo`/`/redo` **não** fazem rollback de
-  arquivos via git como no TS nem reexecutam o agent (decisão consciente de escopo, Spec 09k).
+  demais zonas (sidebar/diálogos); keybinds `editor_open`, `session_copy/timeline/fork` e
+  `prompt_stash*` ainda sem ação; agrupamento do palette por contexto; `/undo`/`/redo` **não**
+  fazem rollback de arquivos via git como no TS nem reexecutam o agent (decisão consciente de
+  escopo, Spec 09k).
 
 ## Riscos
 

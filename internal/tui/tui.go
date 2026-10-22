@@ -1722,6 +1722,14 @@ If there are Cursor rules (in .cursor/rules/ or .cursorrules) or Copilot rules (
 		},
 	})
 	model.RegisterCommand(dialog.Command{
+		ID:          "details",
+		Title:       "Toggle Tool Details",
+		Description: "Show or hide tool execution details in the conversation",
+		Handler: func(cmd dialog.Command) tea.Cmd {
+			return util.CmdHandler(chat.ToggleDetailsMsg{})
+		},
+	})
+	model.RegisterCommand(dialog.Command{
 		ID:          "undo",
 		Title:       "Undo Message",
 		Description: "Remove the last user message and its responses (keeps file changes)",

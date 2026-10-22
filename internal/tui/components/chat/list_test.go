@@ -30,6 +30,30 @@ func TestToggleThinking(t *testing.T) {
 	}
 }
 
+func TestToggleDetails(t *testing.T) {
+	cmp, ok := NewMessagesCmp(nil).(*messagesCmp)
+	if !ok {
+		t.Fatal("NewMessagesCmp must return a *messagesCmp")
+	}
+	if !cmp.showDetails {
+		t.Fatal("tool details must be visible by default")
+	}
+
+	next, cmd := cmp.Update(ToggleDetailsMsg{})
+	got := next.(*messagesCmp)
+	if got.showDetails {
+		t.Error("first toggle must hide the tool details")
+	}
+	if cmd == nil {
+		t.Error("toggle must report the new state")
+	}
+
+	next, _ = got.Update(ToggleDetailsMsg{})
+	if !next.(*messagesCmp).showDetails {
+		t.Error("second toggle must show the tool details again")
+	}
+}
+
 func TestMessagePlainText(t *testing.T) {
 	user := message.Message{Role: message.User, Parts: []message.ContentPart{
 		message.TextContent{Text: "  hello there  "},

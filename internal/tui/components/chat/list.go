@@ -40,10 +40,13 @@ type messagesCmp struct {
 	// showThinking controls whether reasoning blocks are rendered at all
 	// (Spec 09i, /thinking).
 	showThinking bool
-	spinner      spinner.Model
-	rendering    bool
-	attachments  viewport.Model
-	zones        *util.ZoneSet
+	// showDetails controls whether tool calls render their execution output
+	// (Spec 09l, /details).
+	showDetails bool
+	spinner     spinner.Model
+	rendering   bool
+	attachments viewport.Model
+	zones       *util.ZoneSet
 }
 type renderFinishedMsg struct{}
 
@@ -54,6 +57,10 @@ type ToggleThinkingMsg struct{}
 // CopyMessageMsg puts the focused (or most recent) message on the clipboard
 // (Spec 09j: the messages_copy keybind).
 type CopyMessageMsg struct{}
+
+// ToggleDetailsMsg flips the visibility of tool execution details (Spec 09l:
+// the /details command).
+type ToggleDetailsMsg struct{}
 
 type MessageKeys struct {
 	PageDown     key.Binding
@@ -101,6 +108,16 @@ func (m *messagesCmp) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			state = "hidden"
 		}
 		return m, util.ReportInfo("Thinking blocks " + state)
+	case ToggleDetailsMsg:
+		m.showDetails = !m.showDetails
+		// Every cached render may embed a tool response, so drop them all.
+		m.cachedContent = make(map[string]cacheItem)
+		m.renderView()
+		state := "shown"
+		if !m.showDetails {
+			state = "hidden"
+		}
+		return m, util.ReportInfo("Tool details " + state)
 	case CopyMessageMsg:
 		target := m.copyTarget()
 		if target == nil {
@@ -283,6 +300,7 @@ func (m *messagesCmp) renderView() {
 				m.currentMsgID,
 				m.thinkingExpanded[msg.ID],
 				m.showThinking,
+				m.showDetails,
 				isSummary,
 				m.width,
 				pos,
@@ -592,6 +610,7 @@ func NewMessagesCmp(app *app.App) tea.Model {
 		cachedContent:    make(map[string]cacheItem),
 		thinkingExpanded: make(map[string]bool),
 		showThinking:     true,
+		showDetails:      true,
 		viewport:         vp,
 		spinner:          s,
 		attachments:      attachmets,
