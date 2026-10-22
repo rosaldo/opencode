@@ -100,12 +100,6 @@ func timelineText(msg message.Message) string {
 	return strings.Join(parts, " ")
 }
 
-// TimelineJumpMsg asks the app to close the dialog and scroll the transcript to
-// the selected message (Spec 09o).
-type TimelineJumpMsg struct {
-	MessageID string
-}
-
 // TimelinePreviewMsg scrolls the transcript behind the open dialog while the
 // selection moves (Spec 09o).
 type TimelinePreviewMsg struct {
@@ -141,7 +135,7 @@ type timelineKeyMap struct {
 var timelineKeys = timelineKeyMap{
 	Enter: key.NewBinding(
 		key.WithKeys("enter"),
-		key.WithHelp("enter", "jump to message"),
+		key.WithHelp("enter", "message actions"),
 	),
 	Escape: key.NewBinding(
 		key.WithKeys("esc"),
@@ -182,7 +176,9 @@ func (c *timelineDialogCmp) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, timelineKeys.Enter):
 			selectedItem, idx := c.listView.GetSelectedItem()
 			if idx != -1 {
-				return c, util.CmdHandler(TimelineJumpMsg{
+				// Enter opens the message actions instead of jumping
+				// directly (Spec 09u).
+				return c, util.CmdHandler(OpenMessageActionsMsg{
 					MessageID: selectedItem.MessageID,
 				})
 			}
@@ -191,10 +187,10 @@ func (c *timelineDialogCmp) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case utilComponents.ListActivatedMsg:
 		// A click already moved the selection; activate it like Enter
-		// (Spec 09n).
+		// (Spec 09n/09u).
 		selectedItem, idx := c.listView.GetSelectedItem()
 		if idx != -1 {
-			return c, util.CmdHandler(TimelineJumpMsg{
+			return c, util.CmdHandler(OpenMessageActionsMsg{
 				MessageID: selectedItem.MessageID,
 			})
 		}

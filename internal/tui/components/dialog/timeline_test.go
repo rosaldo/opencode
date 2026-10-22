@@ -54,16 +54,16 @@ func newTestTimelineDialog(t *testing.T) *timelineDialogCmp {
 	return c
 }
 
-func TestTimelineDialogEnterJumps(t *testing.T) {
+func TestTimelineDialogEnterOpensActions(t *testing.T) {
 	c := newTestTimelineDialog(t)
 
 	_, cmd := c.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	if cmd == nil {
-		t.Fatal("enter must jump to the selected message")
+		t.Fatal("enter must open the message actions (Spec 09u)")
 	}
-	msg, ok := cmd().(TimelineJumpMsg)
+	msg, ok := cmd().(OpenMessageActionsMsg)
 	if !ok {
-		t.Fatalf("msg = %T, want TimelineJumpMsg", cmd())
+		t.Fatalf("msg = %T, want OpenMessageActionsMsg", cmd())
 	}
 	// The list opens with the newest message selected.
 	if msg.MessageID != "m3" {
@@ -83,7 +83,7 @@ func TestTimelineDialogEscapeCloses(t *testing.T) {
 	}
 }
 
-func TestTimelineDialogListActivatedJumps(t *testing.T) {
+func TestTimelineDialogListActivatedOpensActions(t *testing.T) {
 	c := newTestTimelineDialog(t)
 
 	// The click already moved the selection to the older message (Spec 09n);
@@ -91,11 +91,11 @@ func TestTimelineDialogListActivatedJumps(t *testing.T) {
 	c.Update(tea.KeyMsg{Type: tea.KeyDown})
 	_, cmd := c.Update(utilComponents.ListActivatedMsg{Index: 1})
 	if cmd == nil {
-		t.Fatal("ListActivatedMsg must jump like Enter")
+		t.Fatal("ListActivatedMsg must open the actions like Enter")
 	}
-	msg, ok := cmd().(TimelineJumpMsg)
+	msg, ok := cmd().(OpenMessageActionsMsg)
 	if !ok {
-		t.Fatalf("msg = %T, want TimelineJumpMsg", cmd())
+		t.Fatalf("msg = %T, want OpenMessageActionsMsg", cmd())
 	}
 	if msg.MessageID != "m1" {
 		t.Errorf("MessageID = %q, want m1 after moving down", msg.MessageID)

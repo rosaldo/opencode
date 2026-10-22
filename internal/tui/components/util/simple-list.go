@@ -34,6 +34,9 @@ type SimpleList[T SimpleListItem] interface {
 	GetSelectedItem() (item T, idx int)
 	SetItems(items []T)
 	GetItems() []T
+	// SelectIndex moves the selection to idx (Spec 09u); out-of-range
+	// indexes are ignored.
+	SelectIndex(idx int)
 	// SetGroupHeaders toggles the non-selectable group headers rendered above
 	// the first row of each group (Spec 09s). Off by default.
 	SetGroupHeaders(show bool)
@@ -139,6 +142,13 @@ func (c *simpleListCmp[T]) SetItems(items []T) {
 
 func (c *simpleListCmp[T]) GetItems() []T {
 	return c.items
+}
+
+func (c *simpleListCmp[T]) SelectIndex(idx int) {
+	if idx < 0 || idx >= len(c.items) {
+		return
+	}
+	c.selectedIdx = idx
 }
 
 func (c *simpleListCmp[T]) SetGroupHeaders(show bool) {

@@ -259,7 +259,8 @@ Fechar lacunas da TUI: **keybinds configuráveis**, suporte a **mouse/scroll**, 
       lista as **mensagens de usuário** da sessão ativa (mais recentes primeiro, com hora
       `15:04:05`), busca fuzzy (`/`), preview ao mover a seleção (`TimelinePreviewMsg` →
       `chat.JumpToMessageMsg`, o transcript rola atrás do diálogo) e Enter/clique →
-      `TimelineJumpMsg` (fecha e pula). Esc fecha. Slash `/timeline` ("Jump to message").
+      `OpenMessageActionsMsg` (troca o picker pelo Message Actions, Spec 09u). Esc fecha.
+      Slash `/timeline` ("Jump to message").
     - `chat.JumpToMessageMsg` → `messagesCmp`: foca a mensagem e usa o `scrollToMessage`
       existente (offset = altura acumulada).
     - `session_copy` (default `none`, sem slash — igual ao TS): transcrição Markdown da
@@ -386,15 +387,41 @@ Fechar lacunas da TUI: **keybinds configuráveis**, suporte a **mouse/scroll**, 
     - Adaptação consciente: paleta de 216 cores (banding leve em fotos) em troca de
       resolução real do protocolo; escalonamento de texto/cursor é responsabilidade do
       terminal.
+  - **Message Actions na timeline (09u)** — feito:
+    - Enter/clique no timeline agora emitem `OpenMessageActionsMsg` → `openMessageActions`
+      carrega a mensagem (`Messages.Get`) e troca o picker pelo novo diálogo
+      `dialog/message.go` — o mesmo option set do `DialogMessage` ("Message Actions") do
+      TS: **Jump to** ("view message in session"), **Revert** ("undo messages from this
+      point" — ver adaptação), **Copy** ("message text to clipboard") e **Fork**
+      ("create a new session", só para mensagens de usuário, como no TS).
+    - Ações: Jump → fecha e rola o transcript (`chat.JumpToMessageMsg`, o comportamento
+      antigo do Enter); Revert → `revertToMessage` (`message_actions.go`): remove a
+      mensagem escolhida e **todas as seguintes** via `Messages.Delete`, empilha o lote
+      em `undone` para `/redo` e devolve o texto da mensagem de usuário ao composer
+      (mesma seam do `/undo`); Copy → texto da mensagem no clipboard, com os mesmos
+      toasts do `<leader>y`; Fork → abre o fork picker preselecionado na mensagem
+      (`ForkDialog.SelectMessage` + `SimpleList.SelectIndex`).
+    - Diálogo: `SimpleList[messageActionItem]` com título + descrição muted como rodapé;
+      `SetMessage` zera a seleção (Jump to preselecionado) e desabilita Copy quando não
+      há mensagem; Esc → fecha; clique/wheel idênticos aos demais diálogos (relay de
+      `ListActivatedMsg`, ramos em `forwardMouseClick`, wheel, cadeia principal, View e
+      `inChatContext`).
+    - Testes: `message_test.go` (4 opções para usuário / 3 sem Fork para assistant,
+      Enter=Jump, navegação até Fork, Esc, clique, reset da seleção, Enter ignorado sem
+      mensagem), `timeline_test.go` (Enter/clique → `OpenMessageActionsMsg`),
+      `fork_test.go` (`SelectMessage`), `simple-list_test.go` (`SelectIndex`).
+    - Adaptações conscientes: o TS **stageia** o revert (estado `session.revert` +
+      banner "N messages reverted" com clear e rollback de arquivos via snapshots);
+      aqui o revert é aplicado na hora, sem tocar na árvore de trabalho (mesma decisão
+      de escopo da Spec 09k — recuperação via `/redo`) e a descrição da ação diz
+      "from this point" em vez de "and file changes"; Esc do actions fecha direto (não
+      volta ao timeline).
 
-- Pendências conscientes: o
-  diálogo de timeline do TS também
-  abre um "Message Actions" (Jump to / Revert / Copy / Fork) na seleção — aqui Enter pula
-  direto até que Revert exista (Fork já existe via `/fork`/`session_fork`); keybind
-  `session_move` ainda sem ação (no TS abre o menu de working directory até o "Move session
-  to worktree" — exige diretório **por sessão** + worktrees, decisão arquitetural pendente);
-  `/undo`/`/redo` **não** fazem rollback de arquivos via git como no TS
-  nem reexecutam o agent (decisão consciente de escopo, Spec 09k).
+- Pendências conscientes: keybind `session_move` ainda sem ação (no TS abre o menu de
+  working directory até o "Move session to worktree" — exige diretório **por sessão** +
+  worktrees, decisão arquitetural pendente); `/undo`/`/redo` **não** fazem rollback de
+  arquivos via git como no TS nem reexecutam o agent (decisão consciente de escopo,
+  Spec 09k — vale também para o Revert da Spec 09u).
 
 ## Riscos
 

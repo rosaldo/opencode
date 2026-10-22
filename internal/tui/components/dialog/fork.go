@@ -43,6 +43,9 @@ type ForkDialog interface {
 	layout.Bindings
 	SetItems(items []TimelineItem)
 	SetPending(pending bool)
+	// SelectMessage preselects the row for messageID (Spec 09u); an unknown
+	// id leaves the selection unchanged.
+	SelectMessage(messageID string)
 }
 
 type forkDialogCmp struct {
@@ -256,6 +259,15 @@ func (c *forkDialogCmp) SetItems(items []TimelineItem) {
 
 func (c *forkDialogCmp) SetPending(pending bool) {
 	c.pending = pending
+}
+
+func (c *forkDialogCmp) SelectMessage(messageID string) {
+	idx := slices.IndexFunc(c.all, func(item TimelineItem) bool {
+		return item.MessageID == messageID
+	})
+	if idx >= 0 {
+		c.listView.SelectIndex(idx)
+	}
 }
 
 // NewForkDialogCmp creates the fork picker (Spec 09p).

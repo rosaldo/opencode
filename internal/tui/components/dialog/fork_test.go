@@ -170,3 +170,19 @@ func TestForkItemRenderSkipsZeroTimestamp(t *testing.T) {
 		t.Errorf("stamped rows must keep the time footer, got %q", foot)
 	}
 }
+
+func TestForkDialogSelectMessage(t *testing.T) {
+	c := newTestForkDialog(t)
+
+	c.SelectMessage("m1")
+	selected, idx := c.listView.GetSelectedItem()
+	if idx == -1 || selected.MessageID != "m1" {
+		t.Errorf("selected = %+v (idx %d), want the m1 row", selected, idx)
+	}
+
+	// Unknown ids leave the selection alone.
+	c.SelectMessage("missing")
+	if _, idx := c.listView.GetSelectedItem(); idx != 2 {
+		t.Errorf("unknown id moved the selection to %d, want it unchanged", idx)
+	}
+}

@@ -141,3 +141,24 @@ func TestSimpleListGroupHeaderNotZoned(t *testing.T) {
 		t.Errorf("zoned ids = %d, want 5 row zones", got)
 	}
 }
+
+func TestSimpleListSelectIndex(t *testing.T) {
+	list := NewSimpleList([]testItem{{"a"}, {"b"}, {"c"}}, 10, "none", false)
+	c, ok := list.(*simpleListCmp[testItem])
+	if !ok {
+		t.Fatal("NewSimpleList must return *simpleListCmp")
+	}
+
+	c.SelectIndex(1)
+	if _, idx := c.GetSelectedItem(); idx != 1 {
+		t.Errorf("selectedIdx = %d, want 1", idx)
+	}
+	c.SelectIndex(99)
+	if _, idx := c.GetSelectedItem(); idx != 1 {
+		t.Errorf("out-of-range select must be ignored, got %d", idx)
+	}
+	c.SelectIndex(-1)
+	if _, idx := c.GetSelectedItem(); idx != 1 {
+		t.Errorf("negative select must be ignored, got %d", idx)
+	}
+}

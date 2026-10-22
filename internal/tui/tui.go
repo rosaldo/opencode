@@ -386,7 +386,8 @@ func (a appModel) inChatContext() bool {
 		!a.showSessionDialog && !a.showModelDialog && !a.showAgentDialog &&
 		!a.showThemeDialog && !a.showTimelineDialog && !a.showFilepicker &&
 		!a.showHelp && !a.showPluginsDialog && !a.showConnectDialog &&
-		!a.showMultiArgumentsDialog && !a.showForkDialog && !a.showStashDialog
+		!a.showMultiArgumentsDialog && !a.showForkDialog && !a.showStashDialog &&
+		!a.showMessageDialog
 }
 
 // runLeaderAction executes one leader action (Spec 09d).
@@ -458,6 +459,11 @@ func (a *appModel) forwardMouseClick(msg tea.MouseMsg) tea.Cmd {
 	if a.showTimelineDialog {
 		d, cmd := a.timelineDialog.Update(msg)
 		a.timelineDialog = d.(dialog.TimelineDialog)
+		return cmd
+	}
+	if a.showMessageDialog {
+		d, cmd := a.messageDialog.Update(msg)
+		a.messageDialog = d.(dialog.MessageActionsDialog)
 		return cmd
 	}
 	if a.showForkDialog {
@@ -546,6 +552,25 @@ func (a appModel) openTimelineDialog() (appModel, tea.Cmd) {
 	return a, a.timelineDialog.Init()
 }
 
+// openMessageActions loads the chosen message and replaces the timeline
+// picker with the actions dialog (Spec 09u).
+func (a appModel) openMessageActions(messageID string) (appModel, tea.Cmd) {
+	if a.app == nil || a.selectedSession.ID == "" {
+		return a, util.ReportWarn("No active session")
+	}
+	if a.showQuit || a.showPermissions || a.showSessionDialog || a.showCommandDialog {
+		return a, nil
+	}
+	msg, err := a.app.Messages.Get(context.Background(), messageID)
+	if err != nil {
+		return a, util.ReportError(err)
+	}
+	a.showTimelineDialog = false
+	a.messageDialog.SetMessage(&msg)
+	a.showMessageDialog = true
+	return a, a.messageDialog.Init()
+}
+
 // openForkDialog loads the current session messages and shows the fork picker
 // (/fork, Spec 09p). The first row forks the full session; the remaining rows
 // fork up to (excluding) the chosen user message.
@@ -626,6 +651,7 @@ func (a appModel) toggleQuit() (appModel, tea.Cmd) {
 	a.showModelDialog = false
 	a.showAgentDialog = false
 	a.showTimelineDialog = false
+	a.showMessageDialog = false
 	a.showForkDialog = false
 	a.showStashDialog = false
 	a.showMultiArgumentsDialog = false
@@ -717,6 +743,9 @@ type appModel struct {
 
 	showTimelineDialog bool
 	timelineDialog     dialog.TimelineDialog
+
+	showMessageDialog bool
+	messageDialog     dialog.MessageActionsDialog
 
 	showForkDialog bool
 	forkDialog     dialog.ForkDialog
@@ -873,6 +902,11 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.timelineDialog = d.(dialog.TimelineDialog)
 			return a, cmd
 		}
+		if a.showMessageDialog {
+			d, cmd := a.messageDialog.Update(keyMsg)
+			a.messageDialog = d.(dialog.MessageActionsDialog)
+			return a, cmd
+		}
 		if a.showForkDialog {
 			d, cmd := a.forkDialog.Update(keyMsg)
 			a.forkDialog = d.(dialog.ForkDialog)
@@ -1015,6 +1049,11 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.timelineDialog = d.(dialog.TimelineDialog)
 			return a, cmd
 		}
+		if a.showMessageDialog {
+			d, cmd := a.messageDialog.Update(msg)
+			a.messageDialog = d.(dialog.MessageActionsDialog)
+			return a, cmd
+		}
 		if a.showForkDialog {
 			d, cmd := a.forkDialog.Update(msg)
 			a.forkDialog = d.(dialog.ForkDialog)
@@ -1076,13 +1115,34 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case dialog.CloseTimelineDialogMsg:
 		a.showTimelineDialog = false
 		return a, nil
-	case dialog.TimelineJumpMsg:
-		// Close the picker and scroll the transcript to the chosen message.
-		a.showTimelineDialog = false
-		return a.updateChatPage(chat.JumpToMessageMsg{MessageID: msg.MessageID})
 	case dialog.TimelinePreviewMsg:
 		// Scroll behind the open dialog without closing it (Spec 09o).
 		return a.updateChatPage(chat.JumpToMessageMsg{MessageID: msg.MessageID})
+
+	// Message actions (Spec 09u).
+	case dialog.OpenMessageActionsMsg:
+		return a.openMessageActions(msg.MessageID)
+	case dialog.CloseMessageActionsMsg:
+		a.showMessageDialog = false
+		return a, nil
+	case dialog.MessageActionMsg:
+		a.showMessageDialog = false
+		switch msg.Action {
+		case dialog.MessageActionJump:
+			// Close the dialog and scroll the transcript to the message.
+			return a.updateChatPage(chat.JumpToMessageMsg{MessageID: msg.MessageID})
+		case dialog.MessageActionRevert:
+			return a.revertToMessage(msg.MessageID)
+		case dialog.MessageActionCopy:
+			return a.copyMessageByID(msg.MessageID)
+		case dialog.MessageActionFork:
+			// Replace the actions dialog with the fork picker preselected
+			// on the message (Spec 09u).
+			forked, cmd := a.openForkDialog()
+			forked.forkDialog.SelectMessage(msg.MessageID)
+			return forked, cmd
+		}
+		return a, nil
 
 	// Prompt stash (Spec 09q).
 	case chat.StashListMsg:
@@ -1527,6 +1587,16 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	if a.showMessageDialog {
+		d, messageCmd := a.messageDialog.Update(msg)
+		a.messageDialog = d.(dialog.MessageActionsDialog)
+		cmds = append(cmds, messageCmd)
+		// Only block key messages send all other messages down
+		if _, ok := msg.(tea.KeyMsg); ok {
+			return a, tea.Batch(cmds...)
+		}
+	}
+
 	if a.showForkDialog {
 		d, forkCmd := a.forkDialog.Update(msg)
 		a.forkDialog = d.(dialog.ForkDialog)
@@ -1893,6 +1963,21 @@ func (a appModel) View() string {
 
 	if a.showTimelineDialog {
 		overlay := a.timelineDialog.View()
+		row := lipgloss.Height(appView) / 2
+		row -= lipgloss.Height(overlay) / 2
+		col := lipgloss.Width(appView) / 2
+		col -= lipgloss.Width(overlay) / 2
+		appView = layout.PlaceOverlay(
+			col,
+			row,
+			overlay,
+			appView,
+			true,
+		)
+	}
+
+	if a.showMessageDialog {
+		overlay := a.messageDialog.View()
 		row := lipgloss.Height(appView) / 2
 		row -= lipgloss.Height(overlay) / 2
 		col := lipgloss.Width(appView) / 2
