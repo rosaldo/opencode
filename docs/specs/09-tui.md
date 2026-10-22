@@ -302,13 +302,44 @@ Fechar lacunas da TUI: **keybinds configuráveis**, suporte a **mouse/scroll**, 
       Enter completo/por mensagem, Esc, clique, pending, busca, render sem timestamp),
       `keybinds_test.go`/`leader_test.go` (default desabilitado, sufixo `f` quando
       configurado).
+  - **Prompt stash (09q)** — feito:
+    - `internal/promptstash`: store limitado (MAX 50, LIFO) persistido em
+      `<data.dir>/prompt-stash.jsonl` (um JSON por linha, reescrito a cada mutação — igual ao
+      TS). Leitura tolerante: linhas malformadas ou sem timestamp são ignoradas e o formato
+      da referência (`{"prompt":{"text":...},"timestamp":...}`) também é aceito (nosso
+      writer usa `text`/`attachments`). Sem `data.dir` (testes) o store é só memória.
+    - O stash vive no **editor** (`editorCmp.stash`, aberto no `NewEditorCmp`): msgs
+      `chat.StashPushMsg` (exige texto não vazio e **limpa** composer, anexos e shellMode),
+      `chat.StashPopMsg` (LIFO), `chat.RequestStashListMsg` → `chat.StashListMsg{Entries}`
+      (ou warn quando vazio), `chat.StashTakeMsg{Index}` (sobrescreve e remove) e
+      `chat.StashRemoveMsg{Index}`. Diferente de `RestorePromptMsg` (só preenche vazio),
+      take/pop **sobrescrevem** o draft; take restaura anexos e shellMode (`!cmd`).
+    - Diálogo `dialog/stash.go`: linhas newest-first com preview da 1ª linha (50 chars),
+      idade relativa (`just now`/`Nm ago`/`Nh ago`/`Nd ago`/absoluta após 7 dias) e
+      `~N lines` quando multiline; busca fuzzy `/`; Enter/clique → `StashSelectMsg` (fecha e
+      restaura); `ctrl+d` em **dois passos** (arm → hint "press ctrl+d again to delete" com
+      cor de erro → `StashDeleteMsg`; remove a linha e renumera os índices, diálogo fica
+      aberto). Mover a seleção ou editar a busca desarma; Esc desarma antes de fechar.
+      Adaptação consciente: o aviso de confirmação vai na linha de hint (o TS substitui o
+      título da linha selecionada); a cor "destructive" do tema não existe aqui — `Error()`.
+    - Comandos da paleta: `prompt_stash` ("Stash prompt"), `prompt_stash_pop` ("Stash pop"),
+      `prompt_stash_list` ("Stash list") — os mesmos do TS. Keybinds
+      `prompt_stash`/`prompt_stash_pop`/`prompt_stash_list` default `none` (igual ao TS);
+      quando configurados com `<leader>x` viram sufixos do which-key
+      ("stash prompt"/"pop stash"/"list stash") pela rota `leaderStash*`.
+    - Testes: `promptstash/stash_test.go` (LIFO, trim em 50, roundtrip com anexos em disco,
+      leitura tolerante e do formato TS, store em memória), `chat/stash_test.go`
+      (push/pop/take/remove/guards via `Update`), `dialog/stash_test.go` (projeção e
+      preview, tempo relativo, Enter/Esc/clique, dois passos do delete, desarm por
+      movimento/busca, delete sob filtro, footer), `keybinds_test.go`/`leader_test.go`
+      (defaults desabilitados, sufixos `i`/`o`/`p`).
 
 - Pendências conscientes: codificação **sixel** de fato (hoje o protocolo sixel detectado usa o
   fallback half-block, que funciona em qualquer terminal truecolor); cliques de mouse nos
-  diálogos de agents/plugins ainda sem hit-test (Spec 09n); o diálogo de timeline do TS também
+  diálogos de agents/plugins ainda sem hit-test (Spec 09n); o   diálogo de timeline do TS também
   abre um "Message Actions" (Jump to / Revert / Copy / Fork) na seleção — aqui Enter pula
-  direto até que Revert exista (Fork já existe via `/fork`/`session_fork`); keybinds
-  `session_move`/`prompt_stash*` ainda sem ação; agrupamento
+  direto até que Revert exista (Fork já existe via `/fork`/`session_fork`); keybind
+  `session_move` ainda sem ação; agrupamento
   do palette por contexto; `/undo`/`/redo` **não** fazem rollback de arquivos via git como no TS
   nem reexecutam o agent (decisão consciente de escopo, Spec 09k).
 

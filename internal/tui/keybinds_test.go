@@ -44,6 +44,13 @@ func TestResolveKeybindsDefaults(t *testing.T) {
 	if kb.Enabled(KeybindSessionFork) {
 		t.Error("session_fork default must be disabled")
 	}
+	// prompt_stash* are disabled in the TS keymap too; the /stash commands
+	// are the entry points (Spec 09q).
+	for _, id := range []KeybindID{KeybindPromptStash, KeybindPromptStashPop, KeybindPromptStashList} {
+		if kb.Enabled(id) {
+			t.Errorf("%s default must be disabled", id)
+		}
+	}
 }
 
 func TestResolveKeybindsOverride(t *testing.T) {

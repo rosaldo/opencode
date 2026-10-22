@@ -107,3 +107,47 @@ func TestLeaderSuffixesIncludeForkWhenBound(t *testing.T) {
 		t.Errorf("leaderSuffixes[f] = %v,%v, want leaderForkSession", action, ok)
 	}
 }
+
+func TestLeaderSuffixesIncludeStashWhenBound(t *testing.T) {
+	restore := resolvedKeybinds
+	defer func() {
+		resolvedKeybinds = restore
+		applyLeaderBindings()
+	}()
+
+	kb, warnings := ResolveKeybinds(map[string]string{
+		"prompt_stash":      "<leader>i",
+		"prompt_stash_pop":  "<leader>o",
+		"prompt_stash_list": "<leader>p",
+	})
+	if len(warnings) != 0 {
+		t.Fatalf("unexpected warnings: %v", warnings)
+	}
+	resolvedKeybinds = kb
+	applyLeaderBindings()
+
+	want := map[string]struct {
+		action leaderAction
+		label  string
+	}{
+		"i": {leaderStash, "stash prompt"},
+		"o": {leaderStashPop, "pop stash"},
+		"p": {leaderStashList, "list stash"},
+	}
+	rows := leaderHintRows()
+	for suffix, want := range want {
+		action, ok := leaderSuffixes[suffix]
+		if !ok || action != want.action {
+			t.Errorf("leaderSuffixes[%q] = %v,%v, want %v", suffix, action, ok, want.action)
+		}
+		found := false
+		for _, row := range rows {
+			if strings.HasPrefix(row, suffix+" ") && strings.Contains(row, want.label) {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("rows = %q, want suffix %q with label %q", rows, suffix, want.label)
+		}
+	}
+}

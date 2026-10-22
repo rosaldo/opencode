@@ -39,6 +39,9 @@ const (
 	KeybindMessagesRedo    KeybindID = "messages_redo"
 	KeybindEditorOpen      KeybindID = "editor_open"
 	KeybindToolDetails     KeybindID = "tool_details"
+	KeybindPromptStash     KeybindID = "prompt_stash"
+	KeybindPromptStashPop  KeybindID = "prompt_stash_pop"
+	KeybindPromptStashList KeybindID = "prompt_stash_list"
 )
 
 // defaultLeader is the default value of the <leader> placeholder.
@@ -85,6 +88,12 @@ var defaultKeybinds = map[KeybindID]string{
 	KeybindEditorOpen:   "<leader>e",
 	// Like the TS default: /details is the discoverable way to toggle it.
 	KeybindToolDetails: noneValue,
+	// The prompt_stash* bindings are disabled in the TS keymap too; the
+	// /stash commands (prompt_stash, prompt_stash_pop, prompt_stash_list)
+	// are the discoverable entry points (Spec 09q).
+	KeybindPromptStash:     noneValue,
+	KeybindPromptStashPop:  noneValue,
+	KeybindPromptStashList: noneValue,
 }
 
 // Keybinds is the resolved keymap: each id maps to the list of key strings that

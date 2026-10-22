@@ -17,6 +17,7 @@ import (
 	"github.com/opencode-ai/opencode/internal/logging"
 	"github.com/opencode-ai/opencode/internal/permission"
 	"github.com/opencode-ai/opencode/internal/plugin"
+	"github.com/opencode-ai/opencode/internal/promptstash"
 	"github.com/opencode-ai/opencode/internal/pubsub"
 	"github.com/opencode-ai/opencode/internal/session"
 	"github.com/opencode-ai/opencode/internal/tui/components/chat"
@@ -228,6 +229,9 @@ const (
 	leaderTimeline
 	leaderCopySession
 	leaderForkSession
+	leaderStash
+	leaderStashPop
+	leaderStashList
 )
 
 // leaderSuffixes maps the keystroke pressed after the leader to its action;
@@ -264,6 +268,9 @@ func applyLeaderBindings() {
 		{leaderTimeline, KeybindSessionTimeline},
 		{leaderCopySession, KeybindSessionCopy},
 		{leaderForkSession, KeybindSessionFork},
+		{leaderStash, KeybindPromptStash},
+		{leaderStashPop, KeybindPromptStashPop},
+		{leaderStashList, KeybindPromptStashList},
 	}
 	leaderSuffixes = make(map[string]leaderAction, len(pairs))
 	leaderDirect = make(map[leaderAction]key.Binding, len(pairs))
@@ -347,6 +354,9 @@ var leaderHints = map[leaderAction]string{
 	leaderTimeline:       "jump to message",
 	leaderCopySession:    "copy transcript",
 	leaderForkSession:    "fork session",
+	leaderStash:          "stash prompt",
+	leaderStashPop:       "pop stash",
+	leaderStashList:      "list stash",
 }
 
 // leaderHintRows lists "suffix  label" pairs sorted by suffix: the which-key
@@ -376,7 +386,7 @@ func (a appModel) inChatContext() bool {
 		!a.showSessionDialog && !a.showModelDialog && !a.showAgentDialog &&
 		!a.showThemeDialog && !a.showTimelineDialog && !a.showFilepicker &&
 		!a.showHelp && !a.showPluginsDialog && !a.showConnectDialog &&
-		!a.showMultiArgumentsDialog && !a.showForkDialog
+		!a.showMultiArgumentsDialog && !a.showForkDialog && !a.showStashDialog
 }
 
 // runLeaderAction executes one leader action (Spec 09d).
@@ -412,6 +422,12 @@ func (a appModel) runLeaderAction(action leaderAction) (appModel, tea.Cmd) {
 		return a.copySession()
 	case leaderForkSession:
 		return a.openForkDialog()
+	case leaderStash:
+		return a.updateChatPage(chat.StashPushMsg{})
+	case leaderStashPop:
+		return a.updateChatPage(chat.StashPopMsg{})
+	case leaderStashList:
+		return a.updateChatPage(chat.RequestStashListMsg{})
 	}
 	return a, nil
 }
@@ -447,6 +463,11 @@ func (a *appModel) forwardMouseClick(msg tea.MouseMsg) tea.Cmd {
 	if a.showForkDialog {
 		d, cmd := a.forkDialog.Update(msg)
 		a.forkDialog = d.(dialog.ForkDialog)
+		return cmd
+	}
+	if a.showStashDialog {
+		d, cmd := a.stashDialog.Update(msg)
+		a.stashDialog = d.(dialog.StashDialog)
 		return cmd
 	}
 	var cmd tea.Cmd
@@ -537,6 +558,19 @@ func (a appModel) openForkDialog() (appModel, tea.Cmd) {
 	return a, a.forkDialog.Init()
 }
 
+// openStashDialog shows the stash picker with the entries the editor reported
+// (chat.StashListMsg, Spec 09q). The editor owns the stash, so the dialog is
+// only opened from that reply.
+func (a appModel) openStashDialog(entries []promptstash.Entry) (appModel, tea.Cmd) {
+	if a.currentPage != page.ChatPage || a.showQuit || a.showPermissions ||
+		a.showSessionDialog || a.showCommandDialog {
+		return a, nil
+	}
+	a.stashDialog.SetItems(dialog.StashItems(entries))
+	a.showStashDialog = true
+	return a, a.stashDialog.Init()
+}
+
 // forkSession copies the current session up to (excluding) before into a new
 // session and reports the result asynchronously (Spec 09p). The prompt text of
 // the boundary message rides along so the composer can be prefilled with it.
@@ -583,6 +617,7 @@ func (a appModel) toggleQuit() (appModel, tea.Cmd) {
 	a.showAgentDialog = false
 	a.showTimelineDialog = false
 	a.showForkDialog = false
+	a.showStashDialog = false
 	a.showMultiArgumentsDialog = false
 	if a.showFilepicker {
 		a.showFilepicker = false
@@ -675,6 +710,9 @@ type appModel struct {
 
 	showForkDialog bool
 	forkDialog     dialog.ForkDialog
+
+	showStashDialog bool
+	stashDialog     dialog.StashDialog
 
 	showConnectDialog bool
 	connectDialog     dialog.ConnectDialog
@@ -830,6 +868,11 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.forkDialog = d.(dialog.ForkDialog)
 			return a, cmd
 		}
+		if a.showStashDialog {
+			d, cmd := a.stashDialog.Update(keyMsg)
+			a.stashDialog = d.(dialog.StashDialog)
+			return a, cmd
+		}
 		a.pages[a.currentPage], cmd = a.pages[a.currentPage].Update(keyMsg)
 		return a, cmd
 	// Status
@@ -957,6 +1000,11 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.forkDialog = d.(dialog.ForkDialog)
 			return a, cmd
 		}
+		if a.showStashDialog {
+			d, cmd := a.stashDialog.Update(msg)
+			a.stashDialog = d.(dialog.StashDialog)
+			return a, cmd
+		}
 		return a, nil
 
 	case chat.ShowSessionListMsg:
@@ -1015,6 +1063,20 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case dialog.TimelinePreviewMsg:
 		// Scroll behind the open dialog without closing it (Spec 09o).
 		return a.updateChatPage(chat.JumpToMessageMsg{MessageID: msg.MessageID})
+
+	// Prompt stash (Spec 09q).
+	case chat.StashListMsg:
+		return a.openStashDialog(msg.Entries)
+	case dialog.CloseStashDialogMsg:
+		a.showStashDialog = false
+		return a, nil
+	case dialog.StashSelectMsg:
+		// Restore overwrites the composer and drops the entry (Spec 09q).
+		a.showStashDialog = false
+		return a.updateChatPage(chat.StashTakeMsg{Index: msg.Index})
+	case dialog.StashDeleteMsg:
+		// Deleting keeps the dialog open (Spec 09q).
+		return a.updateChatPage(chat.StashRemoveMsg{Index: msg.Index})
 
 	case startCompactSessionMsg:
 		// Start compacting the current session
@@ -1455,6 +1517,16 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	if a.showStashDialog {
+		d, stashCmd := a.stashDialog.Update(msg)
+		a.stashDialog = d.(dialog.StashDialog)
+		cmds = append(cmds, stashCmd)
+		// Only block key messages send all other messages down
+		if _, ok := msg.(tea.KeyMsg); ok {
+			return a, tea.Batch(cmds...)
+		}
+	}
+
 	if a.showPluginsDialog {
 		d, pluginsCmd := a.pluginsDialog.Update(msg)
 		a.pluginsDialog = d.(dialog.PluginsDialog)
@@ -1825,6 +1897,21 @@ func (a appModel) View() string {
 		)
 	}
 
+	if a.showStashDialog {
+		overlay := a.stashDialog.View()
+		row := lipgloss.Height(appView) / 2
+		row -= lipgloss.Height(overlay) / 2
+		col := lipgloss.Width(appView) / 2
+		col -= lipgloss.Width(overlay) / 2
+		appView = layout.PlaceOverlay(
+			col,
+			row,
+			overlay,
+			appView,
+			true,
+		)
+	}
+
 	if a.showInitDialog {
 		overlay := a.initDialog.View()
 		appView = layout.PlaceOverlay(
@@ -1905,6 +1992,7 @@ func New(app *app.App) tea.Model {
 		themeDialog:    dialog.NewThemeDialogCmp(),
 		timelineDialog: dialog.NewTimelineDialogCmp(),
 		forkDialog:     dialog.NewForkDialogCmp(),
+		stashDialog:    dialog.NewStashDialogCmp(),
 		pluginsDialog:  dialog.NewPluginsDialog(),
 		connectDialog:  dialog.NewConnectDialog(),
 		app:            app,
@@ -1979,6 +2067,33 @@ If there are Cursor rules (in .cursor/rules/ or .cursorrules) or Copilot rules (
 		Description: "Copy this session (or up to a message) into a new one",
 		Handler: func(cmd dialog.Command) tea.Cmd {
 			return util.CmdHandler(showForkMsg{})
+		},
+	})
+
+	model.RegisterCommand(dialog.Command{
+		ID:          "prompt_stash",
+		Title:       "Stash prompt",
+		Description: "Save the current prompt into the stash and clear the composer",
+		Handler: func(cmd dialog.Command) tea.Cmd {
+			return util.CmdHandler(chat.StashPushMsg{})
+		},
+	})
+
+	model.RegisterCommand(dialog.Command{
+		ID:          "prompt_stash_pop",
+		Title:       "Stash pop",
+		Description: "Restore the most recently stashed prompt",
+		Handler: func(cmd dialog.Command) tea.Cmd {
+			return util.CmdHandler(chat.StashPopMsg{})
+		},
+	})
+
+	model.RegisterCommand(dialog.Command{
+		ID:          "prompt_stash_list",
+		Title:       "Stash list",
+		Description: "List the stashed prompts and pick one to restore",
+		Handler: func(cmd dialog.Command) tea.Cmd {
+			return util.CmdHandler(chat.RequestStashListMsg{})
 		},
 	})
 

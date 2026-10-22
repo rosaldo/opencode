@@ -13,8 +13,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/opencode-ai/opencode/internal/app"
+	"github.com/opencode-ai/opencode/internal/config"
 	"github.com/opencode-ai/opencode/internal/logging"
 	"github.com/opencode-ai/opencode/internal/message"
+	"github.com/opencode-ai/opencode/internal/promptstash"
 	"github.com/opencode-ai/opencode/internal/session"
 	"github.com/opencode-ai/opencode/internal/tui/components/dialog"
 	"github.com/opencode-ai/opencode/internal/tui/layout"
@@ -33,6 +35,8 @@ type editorCmp struct {
 	deleteMode  bool
 	// shellMode is true while the prompt is composing a "!cmd" shell passthrough.
 	shellMode bool
+	// stash holds prompts parked by the prompt_stash bindings (Spec 09q).
+	stash *promptstash.Store
 	// history holds the prompts sent in this session (oldest first) for the
 	// history_previous/history_next bindings (Spec 09f). historyIdx == len(history)
 	// means the live draft is in the textarea; historyDraft keeps the draft the
@@ -361,6 +365,17 @@ func (m *editorCmp) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.textarea.SetValue(msg.Text)
 		m.textarea.CursorEnd()
 		return m, nil
+	case StashPushMsg:
+		return m.stashPush()
+	case StashPopMsg:
+		return m.stashPop()
+	case RequestStashListMsg:
+		return m.stashList()
+	case StashTakeMsg:
+		return m.stashTake(msg.Index)
+	case StashRemoveMsg:
+		m.stash.Remove(msg.Index)
+		return m, nil
 	case dialog.AttachmentAddedMsg:
 		if len(m.attachments) >= maxAttachments {
 			logging.ErrorPersist(fmt.Sprintf("cannot add more than %d images", maxAttachments))
@@ -564,8 +579,15 @@ func CreateTextArea(existing *textarea.Model) textarea.Model {
 
 func NewEditorCmp(app *app.App) tea.Model {
 	ta := CreateTextArea(nil)
+	// The stash persists next to the other state files; without a loaded
+	// config (tests) it stays memory-only.
+	var dir string
+	if cfg := config.Get(); cfg != nil {
+		dir = cfg.Data.Directory
+	}
 	return &editorCmp{
 		app:      app,
 		textarea: ta,
+		stash:    promptstash.Open(dir),
 	}
 }
