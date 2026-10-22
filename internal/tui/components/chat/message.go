@@ -240,6 +240,8 @@ func renderAssistantMessage(
 	messagesService message.Service, // We need this to get the task tool messages
 	focusedUIMessageId string,
 	thinkingExpanded bool,
+	// showThinking hides the reasoning block entirely (Spec 09i, /thinking).
+	showThinking bool,
 	isSummary bool,
 	width int,
 	position int,
@@ -285,8 +287,9 @@ func renderAssistantMessage(
 		}
 	}
 	// The reasoning block is rendered on its own, above the answer, so it can be
-	// collapsed independently (Spec 09e).
-	if thinkingContent != "" {
+	// collapsed independently (Spec 09e). /thinking hides it altogether
+	// (Spec 09i).
+	if thinkingContent != "" && showThinking {
 		thinkingMsg := uiMessage{
 			ID:          msg.ID,
 			messageType: thinkingMessageType,

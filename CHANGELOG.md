@@ -2,6 +2,7 @@
 
 > Generated from `git` by `scripts/gen-changelog.sh` — do not edit by hand.
 
+- **v1.9.0** (2026-10-22) · `feat` — tui: /thinking command and display_thinking keybind to hide reasoning blocks (09i)
 - **v1.8.0** (2026-10-22) · `feat` — tui: builtin slash commands /new /sessions /models /themes /help /editor /exit with aliases (09h)
 - **v1.7.0** (2026-10-22) · `feat` — tui: /export command and session_export keybind (09g)
 - **v1.6.0** (2026-10-21) · `feat` — tui: prompt history with configurable history_previous/next keys (09f)

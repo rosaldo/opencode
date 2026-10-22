@@ -204,6 +204,7 @@ const (
 	leaderCompactSession
 	leaderToggleSidebar
 	leaderExportSession
+	leaderToggleThinking
 )
 
 // leaderSuffixes maps the keystroke pressed after the leader to its action;
@@ -227,6 +228,7 @@ func applyLeaderBindings() {
 		leaderCompactSession: KeybindSessionCompact,
 		leaderToggleSidebar:  KeybindSidebarToggle,
 		leaderExportSession:  KeybindSessionExport,
+		leaderToggleThinking: KeybindDisplayThink,
 	} {
 		bound := resolvedKeybinds.Keys(id)
 		if len(bound) == 0 {
@@ -293,6 +295,7 @@ var leaderHints = map[leaderAction]string{
 	leaderCompactSession: "compact session",
 	leaderToggleSidebar:  "toggle sidebar",
 	leaderExportSession:  "export session",
+	leaderToggleThinking: "toggle thinking",
 }
 
 // leaderHintRows lists "suffix  label" pairs sorted by suffix: the which-key
@@ -340,6 +343,8 @@ func (a appModel) runLeaderAction(action leaderAction) (appModel, tea.Cmd) {
 		return a, util.CmdHandler(startCompactSessionMsg{})
 	case leaderExportSession:
 		return a.exportSession()
+	case leaderToggleThinking:
+		return a.updateChatPage(chat.ToggleThinkingMsg{})
 	}
 	return a, nil
 }
@@ -1672,6 +1677,15 @@ If there are Cursor rules (in .cursor/rules/ or .cursorrules) or Copilot rules (
 			return util.CmdHandler(chat.OpenEditorMsg{})
 		},
 	})
+	model.RegisterCommand(dialog.Command{
+		ID:          "thinking",
+		Title:       "Toggle Thinking",
+		Description: "Show or hide the reasoning blocks in the conversation",
+		Handler: func(cmd dialog.Command) tea.Cmd {
+			return util.CmdHandler(chat.ToggleThinkingMsg{})
+		},
+	})
+
 	model.RegisterCommand(dialog.Command{
 		ID:          "exit",
 		Title:       "Exit OpenCode",

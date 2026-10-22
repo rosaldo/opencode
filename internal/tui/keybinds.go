@@ -30,6 +30,7 @@ const (
 	KeybindSessionExport  KeybindID = "session_export"
 	KeybindHistoryPrev    KeybindID = "history_previous"
 	KeybindHistoryNext    KeybindID = "history_next"
+	KeybindDisplayThink   KeybindID = "display_thinking"
 )
 
 // defaultLeader is the default value of the <leader> placeholder.
@@ -60,6 +61,8 @@ var defaultKeybinds = map[KeybindID]string{
 	KeybindSessionExport:  "<leader>x",
 	KeybindHistoryPrev:    "up",
 	KeybindHistoryNext:    "down",
+	// Like the TS default: /thinking is the discoverable way to toggle it.
+	KeybindDisplayThink: noneValue,
 }
 
 // Keybinds is the resolved keymap: each id maps to the list of key strings that

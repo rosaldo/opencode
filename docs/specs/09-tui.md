@@ -34,7 +34,7 @@ Fechar lacunas da TUI: **keybinds configuráveis**, suporte a **mouse/scroll**, 
 - Mapa nome→binding com defaults; `<leader>` e combos; `"none"`/`false` desabilita.
 - Definir o conjunto de IDs (subset do TS): `app_exit`, `command_list`, `agent_list`,
   `session_list/new/rename/delete/interrupt/compact/export`, `model_list`, `theme_list`,
-  `sidebar_toggle`, `prompt_paste`, `history_previous/next`, etc.
+  `sidebar_toggle`, `prompt_paste`, `history_previous/next`, `display_thinking`, etc.
 - Merge sobre defaults; IDs desconhecidos rejeitados com aviso.
 
 ### Mouse
@@ -182,12 +182,21 @@ Fechar lacunas da TUI: **keybinds configuráveis**, suporte a **mouse/scroll**, 
       `openThemeDialog`, `openHelp`, `toggleQuit`) — `ctrl+s`/`ctrl+o`/`ctrl+t`/`ctrl+c` agora
       compartilham o mesmo caminho que os comandos (sem mudança de comportamento).
     - Testes: `internal/tui/commands_test.go` (alias/case-insensitive).
+  - **Comando `/thinking` + `display_thinking` (09i)** — feito:
+    - `renderAssistantMessage` ganhou `showThinking`: com `false` o bloco de raciocínio não é
+      gerado (nem a zona `think:`), mantendo a mensagem/respuesta intactas.
+    - `messagesCmp.showThinking` (default **true**), `chat.ToggleThinkingMsg` limpa todo o
+      `cachedContent` e re-renderiza, reportando "Thinking blocks shown/hidden"; comando
+      `/thinking` em `tui.New` e keybind id `display_thinking` (default `none`, igual ao TS) que
+      vira a ação de leader `leaderToggleThinking` quando configurado.
+    - Testes: `message_test.go` (hidden com/sem resposta), `list_test.go` (toggle).
 
 - Pendências conscientes: codificação **sixel** de fato (hoje o protocolo sixel detectado usa o
   fallback half-block, que funciona em qualquer terminal truecolor) e integração de hit-test das
-  demais zonas (sidebar/diálogos); comandos `/thinking` e `/details` (sem estado de exibição
-  correspondente); keybinds `editor_open`, `messages_copy/undo/redo`, `session_copy/timeline/fork`
-  e `prompt_stash*` ainda sem ação; agrupamento do palette por contexto.
+  demais zonas (sidebar/diálogos); comando `/details` (sem estado de detalhes de tool
+  correspondente); keybinds `editor_open`, `messages_copy/undo/redo`,
+  `session_copy/timeline/fork` e `prompt_stash*` ainda sem ação; agrupamento do palette por
+  contexto.
 
 ## Riscos
 

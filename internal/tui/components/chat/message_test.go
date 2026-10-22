@@ -49,7 +49,7 @@ func TestRenderThinkingBlockExpanded(t *testing.T) {
 
 func TestRenderAssistantMessageThinkingOnly(t *testing.T) {
 	msg := assistantWith(message.ReasoningContent{Thinking: "pondering\nharder"})
-	got := renderAssistantMessage(msg, 0, nil, nil, "", false, false, 80, 0)
+	got := renderAssistantMessage(msg, 0, nil, nil, "", false, true, false, 80, 0)
 
 	if len(got) != 1 {
 		t.Fatalf("want 1 uiMessage, got %d: %+v", len(got), got)
@@ -73,7 +73,7 @@ func TestRenderAssistantMessageThinkingAndAnswer(t *testing.T) {
 		message.ReasoningContent{Thinking: "the reasoning"},
 		message.TextContent{Text: "the answer"},
 	)
-	got := renderAssistantMessage(msg, 0, nil, nil, "", false, false, 80, 0)
+	got := renderAssistantMessage(msg, 0, nil, nil, "", false, true, false, 80, 0)
 
 	if len(got) != 2 {
 		t.Fatalf("want 2 uiMessages, got %d: %+v", len(got), got)
@@ -91,7 +91,7 @@ func TestRenderAssistantMessageThinkingAndAnswer(t *testing.T) {
 
 func TestRenderAssistantMessageAnswerOnly(t *testing.T) {
 	msg := assistantWith(message.TextContent{Text: "just the answer"})
-	got := renderAssistantMessage(msg, 0, nil, nil, "", false, false, 80, 0)
+	got := renderAssistantMessage(msg, 0, nil, nil, "", false, true, false, 80, 0)
 
 	if len(got) != 1 {
 		t.Fatalf("want 1 uiMessage, got %d: %+v", len(got), got)
@@ -103,13 +103,43 @@ func TestRenderAssistantMessageAnswerOnly(t *testing.T) {
 
 func TestRenderAssistantMessageExpandsWhenAsked(t *testing.T) {
 	msg := assistantWith(message.ReasoningContent{Thinking: "secret\nreasoning"})
-	got := renderAssistantMessage(msg, 0, nil, nil, "", true, false, 80, 0)
+	got := renderAssistantMessage(msg, 0, nil, nil, "", true, true, false, 80, 0)
 
 	if len(got) != 1 {
 		t.Fatalf("want 1 uiMessage, got %d", len(got))
 	}
 	if !strings.Contains(ansi.Strip(got[0].content), "secret") {
 		t.Errorf("expanded block must show the reasoning, got %q", got[0].content)
+	}
+}
+
+func TestRenderAssistantMessageThinkingHidden(t *testing.T) {
+	msg := assistantWith(
+		message.ReasoningContent{Thinking: "the reasoning"},
+		message.TextContent{Text: "the answer"},
+	)
+	got := renderAssistantMessage(msg, 0, nil, nil, "", false, false, false, 80, 0)
+
+	if len(got) != 1 {
+		t.Fatalf("want 1 uiMessage with thinking hidden, got %d: %+v", len(got), got)
+	}
+	if got[0].messageType != assistantMessageType {
+		t.Errorf("messageType = %v, want assistantMessageType", got[0].messageType)
+	}
+	out := ansi.Strip(got[0].content)
+	if strings.Contains(out, "Thinking") || strings.Contains(out, "the reasoning") {
+		t.Errorf("hidden thinking must not be rendered, got %q", out)
+	}
+	if !strings.Contains(out, "the answer") {
+		t.Errorf("the answer must stay visible, got %q", out)
+	}
+}
+
+func TestRenderAssistantMessageThinkingOnlyHidden(t *testing.T) {
+	msg := assistantWith(message.ReasoningContent{Thinking: "pondering"})
+	got := renderAssistantMessage(msg, 0, nil, nil, "", false, false, false, 80, 0)
+	if len(got) != 0 {
+		t.Fatalf("a hidden thinking-only message must render nothing, got %d: %+v", len(got), got)
 	}
 }
 

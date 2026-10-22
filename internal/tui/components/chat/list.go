@@ -37,12 +37,19 @@ type messagesCmp struct {
 	// thinkingExpanded tracks which reasoning blocks are open (Spec 09e);
 	// absent means collapsed.
 	thinkingExpanded map[string]bool
-	spinner          spinner.Model
-	rendering        bool
-	attachments      viewport.Model
-	zones            *util.ZoneSet
+	// showThinking controls whether reasoning blocks are rendered at all
+	// (Spec 09i, /thinking).
+	showThinking bool
+	spinner      spinner.Model
+	rendering    bool
+	attachments  viewport.Model
+	zones        *util.ZoneSet
 }
 type renderFinishedMsg struct{}
+
+// ToggleThinkingMsg flips the visibility of the reasoning blocks (Spec 09i:
+// the /thinking command and the display_thinking keybind).
+type ToggleThinkingMsg struct{}
 
 type MessageKeys struct {
 	PageDown     key.Binding
@@ -80,6 +87,16 @@ func (m *messagesCmp) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case dialog.ThemeChangedMsg:
 		m.rerender()
 		return m, nil
+	case ToggleThinkingMsg:
+		m.showThinking = !m.showThinking
+		// Every cached render may embed a reasoning block, so drop them all.
+		m.cachedContent = make(map[string]cacheItem)
+		m.renderView()
+		state := "shown"
+		if !m.showThinking {
+			state = "hidden"
+		}
+		return m, util.ReportInfo("Thinking blocks " + state)
 	case SessionSelectedMsg:
 		if msg.ID != m.session.ID {
 			cmd := m.SetSession(msg)
@@ -248,6 +265,7 @@ func (m *messagesCmp) renderView() {
 				m.app.Messages,
 				m.currentMsgID,
 				m.thinkingExpanded[msg.ID],
+				m.showThinking,
 				isSummary,
 				m.width,
 				pos,
@@ -520,6 +538,7 @@ func NewMessagesCmp(app *app.App) tea.Model {
 		app:              app,
 		cachedContent:    make(map[string]cacheItem),
 		thinkingExpanded: make(map[string]bool),
+		showThinking:     true,
 		viewport:         vp,
 		spinner:          s,
 		attachments:      attachmets,
