@@ -32,6 +32,8 @@ const (
 	KeybindHistoryNext    KeybindID = "history_next"
 	KeybindDisplayThink   KeybindID = "display_thinking"
 	KeybindMessagesCopy   KeybindID = "messages_copy"
+	KeybindMessagesUndo   KeybindID = "messages_undo"
+	KeybindMessagesRedo   KeybindID = "messages_redo"
 )
 
 // defaultLeader is the default value of the <leader> placeholder.
@@ -65,6 +67,10 @@ var defaultKeybinds = map[KeybindID]string{
 	// Like the TS default: /thinking is the discoverable way to toggle it.
 	KeybindDisplayThink: noneValue,
 	KeybindMessagesCopy: "<leader>y",
+	KeybindMessagesUndo: "<leader>u",
+	// The TS default for messages_redo is <leader>r, but that suffix is
+	// taken by session_rename in this fork; "." keeps the vim redo mnemonic.
+	KeybindMessagesRedo: "<leader>.",
 }
 
 // Keybinds is the resolved keymap: each id maps to the list of key strings that

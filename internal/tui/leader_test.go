@@ -18,7 +18,7 @@ func TestLeaderHintRowsSorted(t *testing.T) {
 	applyLeaderBindings()
 
 	rows := leaderHintRows()
-	wantOrder := []string{"b", "c", "d", "n", "r", "x", "y"}
+	wantOrder := []string{".", "b", "c", "d", "n", "r", "u", "x", "y"}
 	if len(rows) != len(wantOrder) {
 		t.Fatalf("rows = %q, want %d entries", rows, len(wantOrder))
 	}
@@ -27,17 +27,23 @@ func TestLeaderHintRowsSorted(t *testing.T) {
 			t.Errorf("row[%d] = %q, want prefix %q", i, rows[i], suffix)
 		}
 	}
-	if !strings.Contains(rows[0], "toggle sidebar") {
-		t.Errorf("row for b = %q, want the sidebar label", rows[0])
+	if !strings.Contains(rows[0], "redo message") {
+		t.Errorf("row for . = %q, want the redo label", rows[0])
 	}
-	if !strings.Contains(rows[4], "rename session") {
-		t.Errorf("row for r = %q, want the rename label", rows[4])
+	if !strings.Contains(rows[1], "toggle sidebar") {
+		t.Errorf("row for b = %q, want the sidebar label", rows[1])
 	}
-	if !strings.Contains(rows[5], "export session") {
-		t.Errorf("row for x = %q, want the export label", rows[5])
+	if !strings.Contains(rows[5], "rename session") {
+		t.Errorf("row for r = %q, want the rename label", rows[5])
 	}
-	if !strings.Contains(rows[6], "copy message") {
-		t.Errorf("row for y = %q, want the copy label", rows[6])
+	if !strings.Contains(rows[6], "undo message") {
+		t.Errorf("row for u = %q, want the undo label", rows[6])
+	}
+	if !strings.Contains(rows[7], "export session") {
+		t.Errorf("row for x = %q, want the export label", rows[7])
+	}
+	if !strings.Contains(rows[8], "copy message") {
+		t.Errorf("row for y = %q, want the copy label", rows[8])
 	}
 }
 

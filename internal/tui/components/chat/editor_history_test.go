@@ -148,6 +148,22 @@ func TestHistoryKeyMessagesRouteThroughUpdate(t *testing.T) {
 	down := tea.KeyMsg{Type: tea.KeyDown}
 	m.Update(down)
 	if got := m.textarea.Value(); got != "draft" {
-		t.Errorf("down key restored %q, want the draft", got)
+		t.Errorf("down restored %q, want the draft", got)
+	}
+}
+
+func TestRestorePromptMsg(t *testing.T) {
+	m := newHistoryEditor()
+	if _, cmd := m.Update(RestorePromptMsg{Text: "undone prompt"}); cmd != nil {
+		t.Errorf("restore returned a command, want nil (got %v)", cmd)
+	}
+	if got := m.textarea.Value(); got != "undone prompt" {
+		t.Errorf("value = %q, want the restored prompt", got)
+	}
+
+	// An existing draft wins over the restored text.
+	m.Update(RestorePromptMsg{Text: "other"})
+	if m.textarea.Value() != "undone prompt" {
+		t.Errorf("value = %q, want the draft kept", m.textarea.Value())
 	}
 }

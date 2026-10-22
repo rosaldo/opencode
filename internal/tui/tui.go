@@ -206,6 +206,8 @@ const (
 	leaderExportSession
 	leaderToggleThinking
 	leaderCopyMessage
+	leaderUndoMessage
+	leaderRedoMessage
 )
 
 // leaderSuffixes maps the keystroke pressed after the leader to its action;
@@ -220,29 +222,43 @@ var (
 // ["<leader>x"] becomes a suffix, anything else becomes a direct key. Ids
 // disabled with "none" leave both maps without an entry.
 func applyLeaderBindings() {
-	leaderSuffixes = make(map[string]leaderAction, 5)
-	leaderDirect = make(map[leaderAction]key.Binding, 5)
-	for action, id := range map[leaderAction]KeybindID{
-		leaderNewSession:     KeybindSessionNew,
-		leaderRenameSession:  KeybindSessionRename,
-		leaderDeleteSession:  KeybindSessionDelete,
-		leaderCompactSession: KeybindSessionCompact,
-		leaderToggleSidebar:  KeybindSidebarToggle,
-		leaderExportSession:  KeybindSessionExport,
-		leaderToggleThinking: KeybindDisplayThink,
-		leaderCopyMessage:    KeybindMessagesCopy,
-	} {
-		bound := resolvedKeybinds.Keys(id)
+	// The slice keeps the wiring deterministic: on a suffix conflict the
+	// first action listed here wins and the loser is logged (Spec 09d).
+	type actionID struct {
+		action leaderAction
+		id     KeybindID
+	}
+	pairs := []actionID{
+		{leaderNewSession, KeybindSessionNew},
+		{leaderRenameSession, KeybindSessionRename},
+		{leaderDeleteSession, KeybindSessionDelete},
+		{leaderCompactSession, KeybindSessionCompact},
+		{leaderToggleSidebar, KeybindSidebarToggle},
+		{leaderExportSession, KeybindSessionExport},
+		{leaderToggleThinking, KeybindDisplayThink},
+		{leaderCopyMessage, KeybindMessagesCopy},
+		{leaderUndoMessage, KeybindMessagesUndo},
+		{leaderRedoMessage, KeybindMessagesRedo},
+	}
+	leaderSuffixes = make(map[string]leaderAction, len(pairs))
+	leaderDirect = make(map[leaderAction]key.Binding, len(pairs))
+	for _, pair := range pairs {
+		bound := resolvedKeybinds.Keys(pair.id)
 		if len(bound) == 0 {
 			continue
 		}
 		if len(bound) == 2 && bound[0] == resolvedKeybinds.Leader {
-			leaderSuffixes[bound[1]] = action
+			if taken, dup := leaderSuffixes[bound[1]]; dup {
+				logging.Warn(fmt.Sprintf("keybinds.%s: suffix %q is already used by another leader action, keeping the other one", pair.id, bound[1]),
+					"taken_by", leaderHints[taken])
+				continue
+			}
+			leaderSuffixes[bound[1]] = pair.action
 			continue
 		}
-		leaderDirect[action] = key.NewBinding(
+		leaderDirect[pair.action] = key.NewBinding(
 			key.WithKeys(bound...),
-			key.WithHelp(bound[0], string(id)),
+			key.WithHelp(bound[0], string(pair.id)),
 		)
 	}
 }
@@ -299,6 +315,8 @@ var leaderHints = map[leaderAction]string{
 	leaderExportSession:  "export session",
 	leaderToggleThinking: "toggle thinking",
 	leaderCopyMessage:    "copy message",
+	leaderUndoMessage:    "undo message",
+	leaderRedoMessage:    "redo message",
 }
 
 // leaderHintRows lists "suffix  label" pairs sorted by suffix: the which-key
@@ -350,6 +368,10 @@ func (a appModel) runLeaderAction(action leaderAction) (appModel, tea.Cmd) {
 		return a.updateChatPage(chat.ToggleThinkingMsg{})
 	case leaderCopyMessage:
 		return a.updateChatPage(chat.CopyMessageMsg{})
+	case leaderUndoMessage:
+		return a.undoMessage()
+	case leaderRedoMessage:
+		return a.redoMessage()
 	}
 	return a, nil
 }
@@ -507,6 +529,9 @@ type appModel struct {
 	// leaderSeq tags every leader transition so ticks from an abandoned
 	// sequence cannot cancel the current one (Spec 09d).
 	leaderSeq uint64
+	// undone stacks the batches removed by /undo so /redo can restore them
+	// (Spec 09k).
+	undone []undoneBatch
 }
 
 func (a appModel) Init() tea.Cmd {
@@ -732,6 +757,12 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case exportSessionMsg:
 		return a.exportSession()
+
+	case undoMessageMsg:
+		return a.undoMessage()
+
+	case redoMessageMsg:
+		return a.redoMessage()
 
 	// Built-in slash commands (Spec 09h).
 	case showSessionListMsg:
@@ -1688,6 +1719,22 @@ If there are Cursor rules (in .cursor/rules/ or .cursorrules) or Copilot rules (
 		Description: "Show or hide the reasoning blocks in the conversation",
 		Handler: func(cmd dialog.Command) tea.Cmd {
 			return util.CmdHandler(chat.ToggleThinkingMsg{})
+		},
+	})
+	model.RegisterCommand(dialog.Command{
+		ID:          "undo",
+		Title:       "Undo Message",
+		Description: "Remove the last user message and its responses (keeps file changes)",
+		Handler: func(cmd dialog.Command) tea.Cmd {
+			return util.CmdHandler(undoMessageMsg{})
+		},
+	})
+	model.RegisterCommand(dialog.Command{
+		ID:          "redo",
+		Title:       "Redo Message",
+		Description: "Restore the message removed by the last undo",
+		Handler: func(cmd dialog.Command) tea.Cmd {
+			return util.CmdHandler(redoMessageMsg{})
 		},
 	})
 

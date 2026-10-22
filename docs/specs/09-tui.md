@@ -35,7 +35,7 @@ Fechar lacunas da TUI: **keybinds configuráveis**, suporte a **mouse/scroll**, 
 - Definir o conjunto de IDs (subset do TS): `app_exit`, `command_list`, `agent_list`,
   `session_list/new/rename/delete/interrupt/compact/export`, `model_list`, `theme_list`,
   `sidebar_toggle`, `prompt_paste`, `history_previous/next`, `display_thinking`, `messages_copy`,
-  etc.
+  `messages_undo/redo`, etc.
 - Merge sobre defaults; IDs desconhecidos rejeitados com aviso.
 
 ### Mouse
@@ -202,13 +202,28 @@ Fechar lacunas da TUI: **keybinds configuráveis**, suporte a **mouse/scroll**, 
     - Testes: `list_test.go` (plain text/alvo de cópia), `util/clipboard_test.go`
       (helper ausente/encadeado, sem tocar no clipboard real), `leader_test.go`/
       `keybinds_test.go` (sufixo `y`).
+  - **Undo/Redo de mensagem (09k)** — feito (sem rollback de git):
+    - `/undo` → `undoMessageMsg` → `appModel.undoMessage()`: apaga a mensagem do usuário mais
+      recente e **todas** as mensagens seguintes (`Messages.Delete`), empilha o lote
+      (`undoneBatch`) e devolve o texto ao prompt (`chat.RestorePromptMsg`, só se o draft estiver
+      vazio) para edição. Guards: sem sessão, sessão ocupada (`IsSessionBusy`), nada a desfazer.
+    - `/redo` → `redoMessageMsg` → recria o lote na mesma ordem (`Messages.Create`); partes
+      `Finish` sintéticas são removidas dos papéis não-assistente antes de recriar (o serviço
+      re-anexa uma). **Não** reexecuta o agent e **não** mexe no working tree.
+    - Keybinds: `messages_undo` (`<leader>u`, igual ao TS) e `messages_redo` (`<leader>.` — o
+      default do TS é `<leader>r`, colidindo com o `session_rename` legado deste fork; `.` mantém
+      o mnemônico do vim). Sufixos `u`/`.` no which-key ("undo/redo message").
+    - `applyLeaderBindings` agora percorre as ações em **ordem determinística** e avisa no log
+      quando dois keybinds disputam o mesmo sufixo (o primeiro da lista vence).
+    - Testes: `undo_test.go` (`lastUserMessageIndex`, `stripFinishParts`), `editor_history_test.go`
+      (`RestorePromptMsg` respeita draft), `leader_test.go`/`keybinds_test.go` (`u`/`.`).
 
 - Pendências conscientes: codificação **sixel** de fato (hoje o protocolo sixel detectado usa o
   fallback half-block, que funciona em qualquer terminal truecolor) e integração de hit-test das
   demais zonas (sidebar/diálogos); comando `/details` (sem estado de detalhes de tool
-  correspondente); keybinds `editor_open`, `messages_undo/redo` (undo/redo com rollback de
-  arquivos via git — decidir escopo antes), `session_copy/timeline/fork` e `prompt_stash*` ainda
-  sem ação; agrupamento do palette por contexto.
+  correspondente); keybinds `editor_open`, `session_copy/timeline/fork` e `prompt_stash*` ainda
+  sem ação; agrupamento do palette por contexto; `/undo`/`/redo` **não** fazem rollback de
+  arquivos via git como no TS nem reexecutam o agent (decisão consciente de escopo, Spec 09k).
 
 ## Riscos
 

@@ -215,6 +215,13 @@ func (m *editorCmp) historyNext() tea.Cmd {
 // Spec 09h).
 type OpenEditorMsg struct{}
 
+// RestorePromptMsg puts text back into the prompt textarea (Spec 09k: /undo
+// returns the undone user message so it can be edited and resent). An
+// existing draft is left untouched.
+type RestorePromptMsg struct {
+	Text string
+}
+
 func (m *editorCmp) openEditor() tea.Cmd {
 	tmpfile, err := os.CreateTemp("", "msg_*.md")
 	if err != nil {
@@ -347,6 +354,13 @@ func (m *editorCmp) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, util.ReportWarn("Agent is working, please wait...")
 		}
 		return m, m.openEditor()
+	case RestorePromptMsg:
+		if m.textarea.Value() != "" {
+			return m, nil
+		}
+		m.textarea.SetValue(msg.Text)
+		m.textarea.CursorEnd()
+		return m, nil
 	case dialog.AttachmentAddedMsg:
 		if len(m.attachments) >= maxAttachments {
 			logging.ErrorPersist(fmt.Sprintf("cannot add more than %d images", maxAttachments))
