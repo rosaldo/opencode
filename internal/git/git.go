@@ -183,13 +183,34 @@ func parseDiff(nameStatus, fullDiff string) []FileDiff {
 	return result
 }
 
-// WorktreeStatus returns the current status of the worktree (modified files).
-func (r *Repository) WorktreeStatus(ctx context.Context) (string, error) {
-	out, stderr, err := r.run(ctx, "status", "--porcelain")
+// ChangedFile is one worktree change reported by git status.
+type ChangedFile struct {
+	Status string
+	Path   string
+}
+
+// ChangedFiles lists worktree changes (staged, unstaged and untracked),
+// NUL-separated so paths with spaces or non-ASCII characters survive intact.
+func (r *Repository) ChangedFiles(ctx context.Context) ([]ChangedFile, error) {
+	out, stderr, err := r.run(ctx, "status", "--porcelain", "-z")
 	if err != nil {
-		return "", fmt.Errorf("git status failed: %w: %s", err, stderr)
+		return nil, fmt.Errorf("git status failed: %w: %s", err, stderr)
 	}
-	return out, nil
+	tokens := strings.Split(out, "\x00")
+	files := make([]ChangedFile, 0, len(tokens))
+	for i := 0; i < len(tokens); i++ {
+		token := tokens[i]
+		if len(token) < 4 {
+			continue
+		}
+		status, path := token[:2], token[3:]
+		files = append(files, ChangedFile{Status: status, Path: path})
+		// Renames and copies emit the original path as the next NUL token.
+		if status[0] == 'R' || status[0] == 'C' {
+			i++
+		}
+	}
+	return files, nil
 }
 
 // ListFiles returns every tracked or untracked-but-not-ignored file in the

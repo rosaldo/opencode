@@ -313,29 +313,15 @@ func (s *service) syncAndCapture(ctx context.Context) (string, error) {
 	worktreeDir := s.worktreeRepo.Dir()
 	shadowDir := s.shadowRepo.Dir()
 
-	// Copy all non-ignored files from worktree to shadow repo
-	// We use git status to find files, then copy them
-	statusOut, err := s.worktreeRepo.WorktreeStatus(ctx)
+	// Sync the files reported by git status into the shadow repository.
+	changed, err := s.worktreeRepo.ChangedFiles(ctx)
 	if err != nil {
 		return "", fmt.Errorf("failed to get worktree status: %w", err)
 	}
 
-	// Parse status and copy files
-	lines := splitLines(statusOut)
-	for _, line := range lines {
-		if len(line) < 4 {
-			continue
-		}
-		status := line[:2]
-		path := line[3:]
-
-		// Handle renames (R  old -> new)
-		if status[0] == 'R' {
-			// Parse "old -> new"
-			if idx := indexOf(path, " -> "); idx >= 0 {
-				path = path[idx+4:]
-			}
-		}
+	for _, file := range changed {
+		status := file.Status
+		path := file.Path
 
 		// Skip deleted files (they must vanish from the shadow worktree).
 		if status[0] == 'D' || status[1] == 'D' {
@@ -437,33 +423,4 @@ func copyDir(src, dst string) error {
 func hashString(s string) string {
 	h := sha256.Sum256([]byte(s))
 	return hex.EncodeToString(h[:])[:16]
-}
-
-// splitLines splits a string into lines, handling \n.
-func splitLines(s string) []string {
-	if s == "" {
-		return nil
-	}
-	var lines []string
-	start := 0
-	for i := 0; i < len(s); i++ {
-		if s[i] == '\n' {
-			lines = append(lines, s[start:i])
-			start = i + 1
-		}
-	}
-	if start < len(s) {
-		lines = append(lines, s[start:])
-	}
-	return lines
-}
-
-// indexOf returns the index of substr in s, or -1.
-func indexOf(s, substr string) int {
-	for i := 0; i+len(substr) <= len(s); i++ {
-		if s[i:i+len(substr)] == substr {
-			return i
-		}
-	}
-	return -1
 }

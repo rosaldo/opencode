@@ -78,3 +78,56 @@ func TestRepository(t *testing.T) {
 		t.Errorf("expected 'hello\\n', got %q", string(content))
 	}
 }
+
+func TestChangedFilesHandlesSpacesAndRenames(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	r := NewRepository(dir)
+	if _, stderr, err := r.Run(ctx, "init"); err != nil {
+		t.Fatalf("failed to init: %v: %s", err, stderr)
+	}
+	if _, _, err := r.Run(ctx, "config", "user.email", "t@t.com"); err != nil {
+		t.Fatalf("config email: %v", err)
+	}
+	if _, _, err := r.Run(ctx, "config", "user.name", "T"); err != nil {
+		t.Fatalf("config name: %v", err)
+	}
+
+	original := filepath.Join(dir, "original name.txt")
+	if err := os.WriteFile(original, []byte("content\n"), 0644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	if _, _, err := r.Run(ctx, "add", "-A"); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+	if _, stderr, err := r.Run(ctx, "commit", "-m", "init"); err != nil {
+		t.Fatalf("commit: %v: %s", err, stderr)
+	}
+
+	if _, _, err := r.Run(ctx, "mv", "original name.txt", "renamed name.txt"); err != nil {
+		t.Fatalf("mv: %v", err)
+	}
+	untracked := filepath.Join(dir, "novo arquivo.txt")
+	if err := os.WriteFile(untracked, []byte("x\n"), 0644); err != nil {
+		t.Fatalf("write untracked: %v", err)
+	}
+
+	files, err := r.ChangedFiles(ctx)
+	if err != nil {
+		t.Fatalf("ChangedFiles: %v", err)
+	}
+
+	paths := map[string]string{}
+	for _, f := range files {
+		paths[f.Path] = f.Status
+	}
+	if status, ok := paths["renamed name.txt"]; !ok || status[0] != 'R' {
+		t.Errorf("renamed path missing or wrong status: %+v", files)
+	}
+	if status, ok := paths["novo arquivo.txt"]; !ok || status != "??" {
+		t.Errorf("untracked path missing or wrong status: %+v", files)
+	}
+	if _, ok := paths["original name.txt"]; ok {
+		t.Errorf("original rename path should be skipped, got %+v", files)
+	}
+}
