@@ -54,7 +54,7 @@ const noneValue = "none"
 // defaultKeybinds are the built-in bindings, matching the pre-Spec-09 keymap so
 // that behaviour is unchanged when no keybinds are configured.
 var defaultKeybinds = map[KeybindID]string{
-	KeybindAppExit:        "ctrl+c",
+	KeybindAppExit:        "ctrl+q",
 	KeybindCommandList:    "ctrl+k",
 	KeybindCommandPalette: "ctrl+p",
 	KeybindAgentList:      "tab",
@@ -83,7 +83,7 @@ var defaultKeybinds = map[KeybindID]string{
 	KeybindHistoryNext: "down",
 	// Like the TS default: /thinking is the discoverable way to toggle it.
 	KeybindDisplayThink: noneValue,
-	KeybindMessagesCopy: "<leader>y",
+	KeybindMessagesCopy: "ctrl+c",
 	KeybindMessagesUndo: "<leader>u",
 	// The TS default for messages_redo is <leader>r, but that suffix is
 	// taken by session_rename in this fork; "." keeps the vim redo mnemonic.

@@ -2,6 +2,7 @@
 
 > Generated from `git` by `scripts/gen-changelog.sh` — do not edit by hand.
 
+- **v1.25.0** (2026-10-23) · `feat` — tui: mouse selection native, ctrl+c copy message, ctrl+q quit, ctrl+v paste
 - **v1.24.0** (2026-10-23) · `feat` — cli: -c continues the most recent session and positional directory
 - **v1.23.1** (2026-10-23) · `fix` — tui: deliver session selections to the chat page and quit in two ctrl+c
 - **v1.23.0** (2026-10-22) · `feat` — tui: per-session working directory and /move
