@@ -1469,7 +1469,7 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if ok {
 						return a.runLeaderAction(action)
 					}
-					// Any other key cancels the sequence but must not be swallowed.
+					// Any other key cancels the leader sequence but must not be swallowed.
 				}
 			}
 			if key.Matches(msg, keys.Leader) {
