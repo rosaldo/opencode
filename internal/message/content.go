@@ -108,6 +108,9 @@ type SnapshotContent struct {
 	SnapshotID string `json:"snapshot_id"`
 	// Files lists the relative paths that were modified by this message.
 	Files []string `json:"files,omitempty"`
+	// Directory is the session working directory the snapshot belongs to
+	// (empty means the process launch directory, Spec 09v).
+	Directory string `json:"directory,omitempty"`
 }
 
 func (SnapshotContent) isPart() {}

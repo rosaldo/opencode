@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -241,5 +242,76 @@ func TestForkMissingSession(t *testing.T) {
 	svc, _ := newForkTestService(t)
 	if _, err := svc.Fork(context.Background(), "missing", ""); err == nil {
 		t.Error("unknown session must fail")
+	}
+}
+
+func TestSetWorkingDirectory(t *testing.T) {
+	svc, _ := newForkTestService(t)
+	ctx := context.Background()
+
+	s, err := svc.Create(ctx, "Parent")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dir := t.TempDir()
+	updated, err := svc.SetWorkingDirectory(ctx, s.ID, dir)
+	if err != nil {
+		t.Fatalf("SetWorkingDirectory: %v", err)
+	}
+	if updated.WorkingDirectory != dir {
+		t.Errorf("working directory = %q, want %q", updated.WorkingDirectory, dir)
+	}
+
+	stored, err := svc.Get(ctx, s.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.WorkingDirectory != dir {
+		t.Errorf("stored working directory = %q, want %q", stored.WorkingDirectory, dir)
+	}
+
+	if _, err := svc.SetWorkingDirectory(ctx, s.ID, filepath.Join(dir, "missing")); err == nil {
+		t.Error("expected an error for a missing directory")
+	}
+
+	file := filepath.Join(dir, "file.txt")
+	if err := os.WriteFile(file, []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.SetWorkingDirectory(ctx, s.ID, file); err == nil {
+		t.Error("expected an error for a file path")
+	}
+
+	reset, err := svc.SetWorkingDirectory(ctx, s.ID, "")
+	if err != nil {
+		t.Fatalf("reset: %v", err)
+	}
+	if reset.WorkingDirectory != "" {
+		t.Errorf("reset working directory = %q, want empty", reset.WorkingDirectory)
+	}
+}
+
+func TestForkInheritsWorkingDirectory(t *testing.T) {
+	svc, q := newForkTestService(t)
+	ctx := context.Background()
+
+	parent, err := svc.Create(ctx, "Parent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	seedMessage(t, q, "u1", parent.ID, "user", 100, false)
+
+	dir := t.TempDir()
+	if _, err := svc.SetWorkingDirectory(ctx, parent.ID, dir); err != nil {
+		t.Fatal(err)
+	}
+
+	fork, err := svc.Fork(ctx, parent.ID, "")
+	if err != nil {
+		t.Fatalf("Fork: %v", err)
+	}
+	if fork.WorkingDirectory != dir {
+		t.Errorf("fork working directory = %q, want %q", fork.WorkingDirectory, dir)
 	}
 }

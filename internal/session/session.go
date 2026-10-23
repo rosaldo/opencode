@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/google/uuid"
 	"github.com/opencode-ai/opencode/internal/db"
@@ -27,6 +29,9 @@ type Session struct {
 	Cost             float64
 	CreatedAt        int64
 	UpdatedAt        int64
+	// WorkingDirectory is the directory this session's tools run in. Empty
+	// means "use the process launch directory" (Spec 09v).
+	WorkingDirectory string
 }
 
 type Service interface {
@@ -40,8 +45,11 @@ type Service interface {
 	Delete(ctx context.Context, id string) error
 	// Fork copies the messages of sessionID that come strictly before the
 	// message identified by before into a new session; an empty before copies
-	// the whole session (Spec 09p).
+	// the whole session (Spec 09p). The fork inherits the working directory.
 	Fork(ctx context.Context, sessionID string, before string) (Session, error)
+	// SetWorkingDirectory changes the directory the session's tools run in
+	// (Spec 09v). An empty dir resets it to the process launch directory.
+	SetWorkingDirectory(ctx context.Context, id, dir string) (Session, error)
 }
 
 type service struct {
@@ -173,6 +181,17 @@ func (s *service) Fork(ctx context.Context, sessionID string, before string) (Se
 		}
 	}
 	session := s.fromDBItem(dbSession)
+	if parent.WorkingDirectory != "" {
+		session.WorkingDirectory = parent.WorkingDirectory
+		updated, updateErr := s.q.UpdateSession(ctx, updateSessionParams(session))
+		if updateErr != nil {
+			if delErr := s.q.DeleteSession(ctx, dbSession.ID); delErr != nil {
+				return Session{}, errors.Join(updateErr, delErr)
+			}
+			return Session{}, updateErr
+		}
+		session = s.fromDBItem(updated)
+	}
 	s.Publish(pubsub.CreatedEvent, session)
 	return session, nil
 }
@@ -193,7 +212,18 @@ func (s *service) Get(ctx context.Context, id string) (Session, error) {
 }
 
 func (s *service) Save(ctx context.Context, session Session) (Session, error) {
-	dbSession, err := s.q.UpdateSession(ctx, db.UpdateSessionParams{
+	dbSession, err := s.q.UpdateSession(ctx, updateSessionParams(session))
+	if err != nil {
+		return Session{}, err
+	}
+	session = s.fromDBItem(dbSession)
+	s.Publish(pubsub.UpdatedEvent, session)
+	return session, nil
+}
+
+// updateSessionParams converts a Session to the generated update params.
+func updateSessionParams(session Session) db.UpdateSessionParams {
+	return db.UpdateSessionParams{
 		ID:               session.ID,
 		Title:            session.Title,
 		PromptTokens:     session.PromptTokens,
@@ -202,14 +232,35 @@ func (s *service) Save(ctx context.Context, session Session) (Session, error) {
 			String: session.SummaryMessageID,
 			Valid:  session.SummaryMessageID != "",
 		},
-		Cost: session.Cost,
-	})
+		Cost:             session.Cost,
+		WorkingDirectory: session.WorkingDirectory,
+	}
+}
+
+// SetWorkingDirectory validates dir and stores it on the session. The path is
+// made absolute so tools resolve relative arguments consistently (Spec 09v).
+func (s *service) SetWorkingDirectory(ctx context.Context, id, dir string) (Session, error) {
+	session, err := s.Get(ctx, id)
 	if err != nil {
 		return Session{}, err
 	}
-	session = s.fromDBItem(dbSession)
-	s.Publish(pubsub.UpdatedEvent, session)
-	return session, nil
+	if dir == "" {
+		session.WorkingDirectory = ""
+		return s.Save(ctx, session)
+	}
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return Session{}, err
+	}
+	info, err := os.Stat(abs)
+	if err != nil {
+		return Session{}, fmt.Errorf("cannot use %s: %w", dir, err)
+	}
+	if !info.IsDir() {
+		return Session{}, fmt.Errorf("%s is not a directory", dir)
+	}
+	session.WorkingDirectory = abs
+	return s.Save(ctx, session)
 }
 
 func (s *service) List(ctx context.Context) ([]Session, error) {
@@ -236,6 +287,7 @@ func (s service) fromDBItem(item db.Session) Session {
 		Cost:             item.Cost,
 		CreatedAt:        item.CreatedAt,
 		UpdatedAt:        item.UpdatedAt,
+		WorkingDirectory: item.WorkingDirectory,
 	}
 }
 

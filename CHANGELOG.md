@@ -2,6 +2,7 @@
 
 > Generated from `git` by `scripts/gen-changelog.sh` — do not edit by hand.
 
+- **v1.23.0** (2026-10-22) · `feat` — tui: per-session working directory and /move
 - **v1.22.1** (2026-10-22) · `fix` — snapshot: parse NUL-separated git status for paths with spaces
 - **v1.22.0** (2026-10-22) · `feat` — tui: snapshot file rollback for undo and revert
 - **v1.21.0** (2026-10-22) · `feat` — tui: message actions dialog with revert (09u)

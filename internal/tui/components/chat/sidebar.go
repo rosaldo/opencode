@@ -32,6 +32,15 @@ const (
 // workingDirectory is a seam so tests can stub the project root (Spec 09n).
 var workingDirectory = config.WorkingDirectory
 
+// sessionDirectory resolves the directory the session's files are listed from
+// (Spec 09v): the per-session override, or the launch directory.
+func (m *sidebarCmp) sessionDirectory() string {
+	if m.session.WorkingDirectory != "" {
+		return m.session.WorkingDirectory
+	}
+	return workingDirectory()
+}
+
 type sidebarCmp struct {
 	width, height int
 	session       session.Session
@@ -115,7 +124,7 @@ func (m *sidebarCmp) clickZone(id string) (tea.Model, tea.Cmd) {
 		if path == "" {
 			return m, nil
 		}
-		abs := filepath.Join(workingDirectory(), path)
+		abs := filepath.Join(m.sessionDirectory(), path)
 		return m, tea.ExecProcess(EditorCommand(abs), func(error) tea.Msg { return nil })
 	}
 	return m, nil
@@ -133,7 +142,7 @@ func (m *sidebarCmp) View() string {
 		Render(
 			lipgloss.JoinVertical(
 				lipgloss.Top,
-				header(m.width),
+				header(m.width, m.session),
 				" ",
 				m.sessionSection(),
 				" ",

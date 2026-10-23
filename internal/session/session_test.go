@@ -77,6 +77,7 @@ func (f *fakeQuerier) UpdateSession(_ context.Context, arg db.UpdateSessionParam
 	s.CompletionTokens = arg.CompletionTokens
 	s.SummaryMessageID = arg.SummaryMessageID
 	s.Cost = arg.Cost
+	s.WorkingDirectory = arg.WorkingDirectory
 	f.sessions[arg.ID] = s
 	return s, nil
 }

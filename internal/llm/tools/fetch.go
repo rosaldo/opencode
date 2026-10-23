@@ -124,7 +124,7 @@ func (t *fetchTool) Run(ctx context.Context, call ToolCall) (ToolResponse, error
 	p := t.permissions.Request(
 		permission.CreatePermissionRequest{
 			SessionID:   sessionID,
-			Path:        config.WorkingDirectory(),
+			Path:        config.WorkingDirectoryFromContext(ctx),
 			ToolName:    FetchToolName,
 			Action:      "fetch",
 			Description: fmt.Sprintf("Fetch content from URL: %s", params.URL),

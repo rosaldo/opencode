@@ -132,7 +132,7 @@ func (e *editTool) Run(ctx context.Context, call ToolCall) (ToolResponse, error)
 	}
 
 	if !filepath.IsAbs(params.FilePath) {
-		wd := config.WorkingDirectory()
+		wd := config.WorkingDirectoryFromContext(ctx)
 		params.FilePath = filepath.Join(wd, params.FilePath)
 	}
 
@@ -196,7 +196,7 @@ func (e *editTool) createNewFile(ctx context.Context, filePath, content string) 
 		content,
 		filePath,
 	)
-	rootDir := config.WorkingDirectory()
+	rootDir := config.WorkingDirectoryFromContext(ctx)
 	permissionPath := filepath.Dir(filePath)
 	if strings.HasPrefix(filePath, rootDir) {
 		permissionPath = rootDir
@@ -307,7 +307,7 @@ func (e *editTool) deleteContent(ctx context.Context, filePath, oldString string
 		filePath,
 	)
 
-	rootDir := config.WorkingDirectory()
+	rootDir := config.WorkingDirectoryFromContext(ctx)
 	permissionPath := filepath.Dir(filePath)
 	if strings.HasPrefix(filePath, rootDir) {
 		permissionPath = rootDir
@@ -427,7 +427,7 @@ func (e *editTool) replaceContent(ctx context.Context, filePath, oldString, newS
 		newContent,
 		filePath,
 	)
-	rootDir := config.WorkingDirectory()
+	rootDir := config.WorkingDirectoryFromContext(ctx)
 	permissionPath := filepath.Dir(filePath)
 	if strings.HasPrefix(filePath, rootDir) {
 		permissionPath = rootDir

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -37,6 +38,9 @@ type App struct {
 
 	clientsMutex sync.RWMutex
 
+	snapshotsMutex sync.Mutex
+	snapshotsByDir map[string]snapshot.Service
+
 	watcherCancelFuncs []context.CancelFunc
 	cancelFuncsMutex   sync.Mutex
 	watcherWG          sync.WaitGroup
@@ -56,6 +60,8 @@ func New(ctx context.Context, conn *sql.DB) (*App, error) {
 		Permissions: permission.NewPermissionService(),
 		Snapshots:   snapshots,
 		LSPClients:  make(map[string]*lsp.Client),
+
+		snapshotsByDir: make(map[string]snapshot.Service),
 	}
 
 	// Initialize theme based on configuration
@@ -71,9 +77,42 @@ func New(ctx context.Context, conn *sql.DB) (*App, error) {
 		History:     app.History,
 		LspClients:  app.LSPClients,
 		Snapshots:   app.Snapshots,
+		SnapshotFor: app.SnapshotFor,
 	})
 
 	return app, nil
+}
+
+// SnapshotFor returns the snapshot service for dir, creating and caching one
+// per directory (Spec 09v). The launch directory reuses the boot service.
+func (app *App) SnapshotFor(dir string) snapshot.Service {
+	if dir == "" {
+		return app.Snapshots
+	}
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return app.Snapshots
+	}
+	if abs == app.SnapshotsDir() {
+		return app.Snapshots
+	}
+	app.snapshotsMutex.Lock()
+	defer app.snapshotsMutex.Unlock()
+	if svc, ok := app.snapshotsByDir[abs]; ok {
+		return svc
+	}
+	svc := snapshot.NewService(abs)
+	app.snapshotsByDir[abs] = svc
+	return svc
+}
+
+// SnapshotsDir returns the launch directory the boot snapshot service uses.
+func (app *App) SnapshotsDir() string {
+	abs, err := filepath.Abs(config.WorkingDirectory())
+	if err != nil {
+		return config.WorkingDirectory()
+	}
+	return abs
 }
 
 // initTheme sets the application theme based on the configuration

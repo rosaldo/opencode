@@ -29,6 +29,7 @@ const (
 	KeybindSessionCompact  KeybindID = "session_compact"
 	KeybindSessionExport   KeybindID = "session_export"
 	KeybindSessionCopy     KeybindID = "session_copy"
+	KeybindSessionMove     KeybindID = "session_move"
 	KeybindSessionTimeline KeybindID = "session_timeline"
 	KeybindSessionFork     KeybindID = "session_fork"
 	KeybindHistoryPrev     KeybindID = "history_previous"
@@ -76,6 +77,8 @@ var defaultKeybinds = map[KeybindID]string{
 	KeybindSessionTimeline: "<leader>g",
 	// Like the TS default: session_fork is slash-only (/fork).
 	KeybindSessionFork: noneValue,
+	// Like the TS v2 default: session_move is disabled; /move opens it.
+	KeybindSessionMove: noneValue,
 	KeybindHistoryPrev: "up",
 	KeybindHistoryNext: "down",
 	// Like the TS default: /thinking is the discoverable way to toggle it.

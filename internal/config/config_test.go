@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -244,5 +245,25 @@ func TestValidateDefinitionsInheritsAndFillsTokens(t *testing.T) {
 	}
 	if bad.MaxTokens <= 0 || inherit.MaxTokens <= 0 {
 		t.Fatalf("maxTokens not filled: bad=%d inherit=%d", bad.MaxTokens, inherit.MaxTokens)
+	}
+}
+
+func TestWorkingDirectoryContext(t *testing.T) {
+	home := t.TempDir()
+	project := t.TempDir()
+	writeConfigFile(t, filepath.Join(project, "opencode.json"), `{}`)
+	loaded := loadForTest(t, home, project)
+	defer resetLoad(t)
+
+	ctx := context.Background()
+	if got := WorkingDirectoryFromContext(ctx); got != loaded.WorkingDir {
+		t.Errorf("global context = %q, want %q", got, loaded.WorkingDir)
+	}
+	moved := WithWorkingDirectory(ctx, "/tmp/moved")
+	if got := WorkingDirectoryFromContext(moved); got != "/tmp/moved" {
+		t.Errorf("override = %q, want /tmp/moved", got)
+	}
+	if got := WorkingDirectoryFromContext(WithWorkingDirectory(ctx, "")); got != loaded.WorkingDir {
+		t.Errorf("empty override = %q, want the launch directory", got)
 	}
 }

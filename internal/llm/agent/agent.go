@@ -62,9 +62,10 @@ type Service interface {
 
 type agent struct {
 	*pubsub.Broker[AgentEvent]
-	sessions  session.Service
-	messages  message.Service
-	snapshots snapshot.Service
+	sessions    session.Service
+	messages    message.Service
+	snapshots   snapshot.Service
+	snapshotFor func(dir string) snapshot.Service
 
 	tools    []tools.BaseTool
 	provider provider.Provider
@@ -80,6 +81,7 @@ func NewAgent(
 	sessions session.Service,
 	messages message.Service,
 	snapshots snapshot.Service,
+	snapshotFor func(dir string) snapshot.Service,
 	agentTools []tools.BaseTool,
 ) (Service, error) {
 	agentProvider, err := createAgentProvider(name)
@@ -113,6 +115,7 @@ func NewAgent(
 		messages:          messages,
 		sessions:          sessions,
 		snapshots:         snapshots,
+		snapshotFor:       snapshotFor,
 		tools:             agentTools,
 		titleProvider:     titleProvider,
 		summarizeProvider: summarizeProvider,
@@ -264,6 +267,13 @@ func (a *agent) processGeneration(ctx context.Context, sessionID, content string
 	if err != nil {
 		return a.err(fmt.Errorf("failed to get session: %w", err))
 	}
+	// Session working directory (Spec 09v): an explicit session directory wins;
+	// otherwise a directory already on the context (subagent of a moved
+	// session) is preserved; the global launch directory is the fallback.
+	if session.WorkingDirectory != "" {
+		ctx = config.WithWorkingDirectory(ctx, session.WorkingDirectory)
+	}
+	workingDir := config.WorkingDirectoryFromContext(ctx)
 	if session.SummaryMessageID != "" {
 		summaryMsgInex := -1
 		for i, msg := range msgs {
@@ -286,10 +296,15 @@ func (a *agent) processGeneration(ctx context.Context, sessionID, content string
 	// Capture a snapshot before processing (Spec 09k/09u file rollback).
 	// The snapshot is stored with the user message so revert can restore
 	// the worktree to the state before this turn.
-	if a.snapshots != nil && a.snapshots.Enabled() {
-		if snap, snapErr := a.snapshots.Capture(ctx); snapErr == nil && snap != nil {
+	snapshots := a.snapshots
+	if a.snapshotFor != nil {
+		snapshots = a.snapshotFor(workingDir)
+	}
+	if snapshots != nil && snapshots.Enabled() {
+		if snap, snapErr := snapshots.Capture(ctx); snapErr == nil && snap != nil {
 			userMsg.Parts = append(userMsg.Parts, message.SnapshotContent{
 				SnapshotID: snap.ID,
+				Directory:  workingDir,
 			})
 			if updateErr := a.messages.Update(ctx, userMsg); updateErr != nil {
 				logging.Debug("Failed to store snapshot with user message", "error", updateErr)

@@ -18,6 +18,9 @@ type undoMessageMsg struct{}
 // worktree (Spec 09k/09u, parity with the TS session.revert.clear).
 type redoMessageMsg struct{}
 
+// openSessionMoveDialogMsg opens the session_move directory prompt (Spec 09v).
+type openSessionMoveDialogMsg struct{}
+
 // undoneBatch is one undo unit: a user message and every message that
 // followed it, kept in order so redo can put them back. snapshotBefore is the
 // worktree state before the turn (file rollback); snapshotAfter is captured on
@@ -27,6 +30,7 @@ type undoneBatch struct {
 	messages       []message.Message
 	snapshotBefore string
 	snapshotAfter  string
+	snapshotDir    string
 }
 
 // lastUserMessageIndex returns the index of the newest user message, or -1

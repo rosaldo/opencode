@@ -9,33 +9,35 @@ import (
 
 func TestBoundarySnapshot(t *testing.T) {
 	msgs := []message.Message{
-		{Role: message.User, Parts: []message.ContentPart{message.SnapshotContent{SnapshotID: "tree-1"}}},
+		{Role: message.User, Parts: []message.ContentPart{message.SnapshotContent{SnapshotID: "tree-1", Directory: "/one"}}},
 		{Role: message.Assistant},
-		{Role: message.User, Parts: []message.ContentPart{message.SnapshotContent{SnapshotID: "tree-2"}}},
+		{Role: message.User, Parts: []message.ContentPart{message.SnapshotContent{SnapshotID: "tree-2", Directory: "/two"}}},
 		{Role: message.Assistant},
 	}
 
 	cases := []struct {
-		name string
-		idx  int
-		want string
+		name    string
+		idx     int
+		wantID  string
+		wantDir string
 	}{
-		{"user message uses its own snapshot", 0, "tree-1"},
-		{"assistant uses the preceding user snapshot", 1, "tree-1"},
-		{"later user message", 2, "tree-2"},
-		{"later assistant", 3, "tree-2"},
+		{"user message uses its own snapshot", 0, "tree-1", "/one"},
+		{"assistant uses the preceding user snapshot", 1, "tree-1", "/one"},
+		{"later user message", 2, "tree-2", "/two"},
+		{"later assistant", 3, "tree-2", "/two"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := boundarySnapshot(msgs, tc.idx); got != tc.want {
-				t.Errorf("boundarySnapshot(%d) = %q, want %q", tc.idx, got, tc.want)
+			got, dir := boundarySnapshot(msgs, tc.idx)
+			if got != tc.wantID || dir != tc.wantDir {
+				t.Errorf("boundarySnapshot(%d) = (%q, %q), want (%q, %q)", tc.idx, got, dir, tc.wantID, tc.wantDir)
 			}
 		})
 	}
 
 	plain := []message.Message{{Role: message.Assistant}}
-	if got := boundarySnapshot(plain, 0); got != "" {
-		t.Errorf("no user message = %q, want empty", got)
+	if id, dir := boundarySnapshot(plain, 0); id != "" || dir != "" {
+		t.Errorf("no user message = (%q, %q), want empty", id, dir)
 	}
 }
 

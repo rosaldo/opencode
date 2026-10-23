@@ -142,7 +142,7 @@ func (g *grepTool) Run(ctx context.Context, call ToolCall) (ToolResponse, error)
 
 	searchPath := params.Path
 	if searchPath == "" {
-		searchPath = config.WorkingDirectory()
+		searchPath = config.WorkingDirectoryFromContext(ctx)
 	}
 
 	if g.permissions != nil {

@@ -229,6 +229,7 @@ const (
 	leaderTimeline
 	leaderCopySession
 	leaderForkSession
+	leaderMoveSession
 	leaderStash
 	leaderStashPop
 	leaderStashList
@@ -268,6 +269,7 @@ func applyLeaderBindings() {
 		{leaderTimeline, KeybindSessionTimeline},
 		{leaderCopySession, KeybindSessionCopy},
 		{leaderForkSession, KeybindSessionFork},
+		{leaderMoveSession, KeybindSessionMove},
 		{leaderStash, KeybindPromptStash},
 		{leaderStashPop, KeybindPromptStashPop},
 		{leaderStashList, KeybindPromptStashList},
@@ -354,6 +356,7 @@ var leaderHints = map[leaderAction]string{
 	leaderTimeline:       "jump to message",
 	leaderCopySession:    "copy transcript",
 	leaderForkSession:    "fork session",
+	leaderMoveSession:    "move session",
 	leaderStash:          "stash prompt",
 	leaderStashPop:       "pop stash",
 	leaderStashList:      "list stash",
@@ -387,7 +390,7 @@ func (a appModel) inChatContext() bool {
 		!a.showThemeDialog && !a.showTimelineDialog && !a.showFilepicker &&
 		!a.showHelp && !a.showPluginsDialog && !a.showConnectDialog &&
 		!a.showMultiArgumentsDialog && !a.showForkDialog && !a.showStashDialog &&
-		!a.showMessageDialog
+		!a.showMessageDialog && !a.showSessionMoveDialog
 }
 
 // runLeaderAction executes one leader action (Spec 09d).
@@ -423,6 +426,8 @@ func (a appModel) runLeaderAction(action leaderAction) (appModel, tea.Cmd) {
 		return a.copySession()
 	case leaderForkSession:
 		return a.openForkDialog()
+	case leaderMoveSession:
+		return a.openSessionMoveDialog()
 	case leaderStash:
 		return a.updateChatPage(chat.StashPushMsg{})
 	case leaderStashPop:
@@ -469,6 +474,11 @@ func (a *appModel) forwardMouseClick(msg tea.MouseMsg) tea.Cmd {
 	if a.showForkDialog {
 		d, cmd := a.forkDialog.Update(msg)
 		a.forkDialog = d.(dialog.ForkDialog)
+		return cmd
+	}
+	if a.showSessionMoveDialog {
+		d, cmd := a.sessionMoveDialog.Update(msg)
+		a.sessionMoveDialog = d.(dialog.SessionMoveDialog)
 		return cmd
 	}
 	if a.showStashDialog {
@@ -574,6 +584,25 @@ func (a appModel) openMessageActions(messageID string) (appModel, tea.Cmd) {
 // openForkDialog loads the current session messages and shows the fork picker
 // (/fork, Spec 09p). The first row forks the full session; the remaining rows
 // fork up to (excluding) the chosen user message.
+// openSessionMoveDialog asks for a new working directory for the session
+// (Spec 09v). Disabled while the agent is running to avoid moving the tree
+// under an in-flight tool call.
+func (a appModel) openSessionMoveDialog() (appModel, tea.Cmd) {
+	if a.app == nil || a.selectedSession.ID == "" {
+		return a, util.ReportWarn("No active session")
+	}
+	if a.app.Agents.IsSessionBusy(a.selectedSession.ID) {
+		return a, util.ReportWarn("Agent is working, please wait...")
+	}
+	dir := a.selectedSession.WorkingDirectory
+	if dir == "" {
+		dir = config.WorkingDirectory()
+	}
+	a.sessionMoveDialog.SetDirectory(dir)
+	a.showSessionMoveDialog = true
+	return a, a.sessionMoveDialog.Init()
+}
+
 func (a appModel) openForkDialog() (appModel, tea.Cmd) {
 	if a.app == nil || a.selectedSession.ID == "" {
 		return a, util.ReportWarn("No active session")
@@ -750,6 +779,9 @@ type appModel struct {
 	showForkDialog bool
 	forkDialog     dialog.ForkDialog
 
+	showSessionMoveDialog bool
+	sessionMoveDialog     dialog.SessionMoveDialog
+
 	showStashDialog bool
 	stashDialog     dialog.StashDialog
 
@@ -916,6 +948,11 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.forkDialog = d.(dialog.ForkDialog)
 			return a, cmd
 		}
+		if a.showSessionMoveDialog {
+			d, cmd := a.sessionMoveDialog.Update(keyMsg)
+			a.sessionMoveDialog = d.(dialog.SessionMoveDialog)
+			return a, cmd
+		}
 		if a.showStashDialog {
 			d, cmd := a.stashDialog.Update(keyMsg)
 			a.stashDialog = d.(dialog.StashDialog)
@@ -1035,6 +1072,9 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case copySessionMsg:
 		return a.copySession()
 
+	case openSessionMoveDialogMsg:
+		return a.openSessionMoveDialog()
+
 	case undoMessageMsg:
 		return a.undoMessage()
 
@@ -1067,6 +1107,11 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.forkDialog = d.(dialog.ForkDialog)
 			return a, cmd
 		}
+		if a.showSessionMoveDialog {
+			d, cmd := a.sessionMoveDialog.Update(msg)
+			a.sessionMoveDialog = d.(dialog.SessionMoveDialog)
+			return a, cmd
+		}
 		if a.showStashDialog {
 			d, cmd := a.stashDialog.Update(msg)
 			a.stashDialog = d.(dialog.StashDialog)
@@ -1097,6 +1142,34 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case dialog.CloseForkDialogMsg:
 		a.showForkDialog = false
 		return a, nil
+	case dialog.CloseSessionMoveDialogMsg:
+		a.showSessionMoveDialog = false
+		return a, nil
+
+	case dialog.SessionMoveMsg:
+		a.showSessionMoveDialog = false
+		if a.app == nil || a.selectedSession.ID == "" {
+			return a, util.ReportWarn("No active session")
+		}
+		current := a.selectedSession.WorkingDirectory
+		if current == "" {
+			current = config.WorkingDirectory()
+		}
+		dir := dialog.ResolveDirectoryInput(msg.Directory, current)
+		updated, err := a.app.Sessions.SetWorkingDirectory(context.Background(), a.selectedSession.ID, dir)
+		if err != nil {
+			return a, util.ReportError(err)
+		}
+		a.selectedSession = updated
+		where := updated.WorkingDirectory
+		if where == "" {
+			where = config.WorkingDirectory()
+		}
+		return a, tea.Batch(
+			util.CmdHandler(chat.SessionSelectedMsg(updated)),
+			util.ReportInfo("Session moved to "+where),
+		)
+
 	case dialog.ForkMsg:
 		// Run the fork off-model; the dialog shows a pending state until the
 		// outcome arrives (Spec 09p).
@@ -1621,6 +1694,26 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	if a.showSessionMoveDialog {
+		d, moveCmd := a.sessionMoveDialog.Update(msg)
+		a.sessionMoveDialog = d.(dialog.SessionMoveDialog)
+		cmds = append(cmds, moveCmd)
+		// Only block key messages send all other messages down
+		if _, ok := msg.(tea.KeyMsg); ok {
+			return a, tea.Batch(cmds...)
+		}
+	}
+
+	if a.showSessionMoveDialog {
+		d, moveCmd := a.sessionMoveDialog.Update(msg)
+		a.sessionMoveDialog = d.(dialog.SessionMoveDialog)
+		cmds = append(cmds, moveCmd)
+		// Only block key messages send all other messages down
+		if _, ok := msg.(tea.KeyMsg); ok {
+			return a, tea.Batch(cmds...)
+		}
+	}
+
 	if a.showStashDialog {
 		d, stashCmd := a.stashDialog.Update(msg)
 		a.stashDialog = d.(dialog.StashDialog)
@@ -2020,6 +2113,21 @@ func (a appModel) View() string {
 		)
 	}
 
+	if a.showSessionMoveDialog {
+		overlay := a.sessionMoveDialog.View()
+		row := lipgloss.Height(appView) / 2
+		row -= lipgloss.Height(overlay) / 2
+		col := lipgloss.Width(appView) / 2
+		col -= lipgloss.Width(overlay) / 2
+		appView = layout.PlaceOverlay(
+			col,
+			row,
+			overlay,
+			appView,
+			true,
+		)
+	}
+
 	if a.showStashDialog {
 		overlay := a.stashDialog.View()
 		row := lipgloss.Height(appView) / 2
@@ -2101,25 +2209,26 @@ func New(app *app.App) tea.Model {
 	applyKeybinds()
 	startPage := page.ChatPage
 	model := &appModel{
-		currentPage:    startPage,
-		loadedPages:    make(map[page.PageID]bool),
-		status:         core.NewStatusCmp(app.LSPClients, app.Agents.Active),
-		help:           dialog.NewHelpCmp(),
-		quit:           dialog.NewQuitCmp(),
-		sessionDialog:  dialog.NewSessionDialogCmp(),
-		commandDialog:  dialog.NewCommandDialogCmp(),
-		modelDialog:    dialog.NewModelDialogCmp(app.Agents.Active),
-		agentDialog:    dialog.NewAgentDialogCmp(app.Agents.Active),
-		permissions:    dialog.NewPermissionDialogCmp(),
-		initDialog:     dialog.NewInitDialogCmp(),
-		themeDialog:    dialog.NewThemeDialogCmp(),
-		timelineDialog: dialog.NewTimelineDialogCmp(),
-		forkDialog:     dialog.NewForkDialogCmp(),
-		stashDialog:    dialog.NewStashDialogCmp(),
-		pluginsDialog:  dialog.NewPluginsDialog(),
-		connectDialog:  dialog.NewConnectDialog(),
-		app:            app,
-		commands:       []dialog.Command{},
+		currentPage:       startPage,
+		loadedPages:       make(map[page.PageID]bool),
+		status:            core.NewStatusCmp(app.LSPClients, app.Agents.Active),
+		help:              dialog.NewHelpCmp(),
+		quit:              dialog.NewQuitCmp(),
+		sessionDialog:     dialog.NewSessionDialogCmp(),
+		commandDialog:     dialog.NewCommandDialogCmp(),
+		modelDialog:       dialog.NewModelDialogCmp(app.Agents.Active),
+		agentDialog:       dialog.NewAgentDialogCmp(app.Agents.Active),
+		permissions:       dialog.NewPermissionDialogCmp(),
+		initDialog:        dialog.NewInitDialogCmp(),
+		themeDialog:       dialog.NewThemeDialogCmp(),
+		timelineDialog:    dialog.NewTimelineDialogCmp(),
+		forkDialog:        dialog.NewForkDialogCmp(),
+		sessionMoveDialog: dialog.NewSessionMoveDialogCmp(),
+		stashDialog:       dialog.NewStashDialogCmp(),
+		pluginsDialog:     dialog.NewPluginsDialog(),
+		connectDialog:     dialog.NewConnectDialog(),
+		app:               app,
+		commands:          []dialog.Command{},
 		pages: map[page.PageID]tea.Model{
 			page.ChatPage: page.NewChatPage(app),
 			page.LogsPage: page.NewLogsPage(),
@@ -2319,6 +2428,16 @@ If there are Cursor rules (in .cursor/rules/ or .cursorrules) or Copilot rules (
 		Description: "Clear the staged revert: restore the messages and file changes",
 		Handler: func(cmd dialog.Command) tea.Cmd {
 			return util.CmdHandler(redoMessageMsg{})
+		},
+	})
+
+	model.RegisterCommand(dialog.Command{
+		ID:          "move",
+		Group:       "Session",
+		Title:       "Move Session",
+		Description: "Choose the working directory for this session's tools",
+		Handler: func(cmd dialog.Command) tea.Cmd {
+			return util.CmdHandler(openSessionMoveDialogMsg{})
 		},
 	})
 

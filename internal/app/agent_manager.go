@@ -118,6 +118,7 @@ func (m *AgentManager) get(name string) (agent.Service, error) {
 		m.deps.Sessions,
 		m.deps.Messages,
 		m.deps.Snapshots,
+		m.deps.SnapshotFor,
 		agent.ToolsForDefinition(def, m.deps),
 	)
 	if err != nil {

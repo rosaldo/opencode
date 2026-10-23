@@ -3,9 +3,11 @@ package tui
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"slices"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/opencode-ai/opencode/internal/config"
 	"github.com/opencode-ai/opencode/internal/logging"
 	"github.com/opencode-ai/opencode/internal/message"
 	"github.com/opencode-ai/opencode/internal/snapshot"
@@ -26,6 +28,7 @@ type stagedRevert struct {
 
 	snapshotBefore string
 	snapshotAfter  string
+	snapshotDir    string
 }
 
 // bannerText renders the staged-revert banner shown above the prompt.
@@ -43,19 +46,33 @@ func (r *stagedRevert) bannerText() string {
 	return fmt.Sprintf("◇ %d %s reverted%s · redo restores", r.count, label, files)
 }
 
+// sessionWorkingDirectory returns the absolute directory the session's tools
+// run in (Spec 09v), defaulting to the launch directory.
+func (a appModel) sessionWorkingDirectory() string {
+	dir := a.selectedSession.WorkingDirectory
+	if dir == "" {
+		dir = config.WorkingDirectory()
+	}
+	if abs, err := filepath.Abs(dir); err == nil {
+		return abs
+	}
+	return dir
+}
+
 // boundarySnapshot returns the worktree snapshot captured before the turn that
-// produced the message at idx. User messages carry their own snapshot; for any
-// other role the snapshot of the nearest preceding user message applies.
-func boundarySnapshot(msgs []message.Message, idx int) string {
+// produced the message at idx and the directory it belongs to. User messages
+// carry their own snapshot; for any other role the snapshot of the nearest
+// preceding user message applies.
+func boundarySnapshot(msgs []message.Message, idx int) (string, string) {
 	for i := idx; i >= 0; i-- {
 		if msgs[i].Role != message.User {
 			continue
 		}
 		if s := msgs[i].SnapshotContent(); s != nil {
-			return s.SnapshotID
+			return s.SnapshotID, s.Directory
 		}
 	}
-	return ""
+	return "", ""
 }
 
 // stageRevert truncates the transcript at idx (inclusive), stashes the removed
@@ -77,20 +94,28 @@ func (a appModel) stageRevert(msgs []message.Message, idx int, restorePrompt boo
 		a = a.commitRevertSilently()
 	}
 
-	snapshotBefore := boundarySnapshot(msgs, idx)
+	snapshotBefore, snapshotDir := boundarySnapshot(msgs, idx)
+	currentDir := a.sessionWorkingDirectory()
 	var snapshotAfter string
 	var files []snapshot.FileDiff
-	if a.app.Snapshots != nil && a.app.Snapshots.Enabled() {
-		if snap, err := a.app.Snapshots.Capture(ctx); err == nil && snap != nil {
-			snapshotAfter = snap.ID
-		}
-		if snapshotBefore != "" {
-			if err := a.app.Snapshots.Restore(ctx, snapshotBefore, nil); err != nil {
+	if snapshotDir != "" && snapshotDir != currentDir {
+		// The session was moved after this turn, so the pre-turn snapshot
+		// lives in a different shadow repository: only the messages revert.
+		logging.Debug("Skipping file rollback across working directories", "snapshot", snapshotDir, "session", currentDir)
+		snapshotBefore = ""
+	}
+	if snapshotBefore != "" && a.app.Snapshots != nil {
+		svc := a.app.SnapshotFor(snapshotDir)
+		if svc != nil && svc.Enabled() {
+			if snap, err := svc.Capture(ctx); err == nil && snap != nil {
+				snapshotAfter = snap.ID
+			}
+			if err := svc.Restore(ctx, snapshotBefore, nil); err != nil {
 				logging.Warn("Failed to roll back the worktree on revert", "error", err)
 			} else if snapshotAfter != "" {
 				// The rolled-back changes are the diff between the post-turn
 				// state (captured above) and the restored pre-turn snapshot.
-				if diffs, diffErr := a.app.Snapshots.Diff(ctx, snapshotAfter, snapshotBefore, nil); diffErr == nil {
+				if diffs, diffErr := svc.Diff(ctx, snapshotAfter, snapshotBefore, nil); diffErr == nil {
 					files = diffs
 					// Files created during the turn are absent from the
 					// pre-turn tree ("D" in after→before); remove them.
@@ -101,7 +126,7 @@ func (a appModel) stageRevert(msgs []message.Message, idx int, restorePrompt boo
 						}
 					}
 					if len(created) > 0 {
-						if rmErr := a.app.Snapshots.RemoveFiles(ctx, created); rmErr != nil {
+						if rmErr := svc.RemoveFiles(ctx, created); rmErr != nil {
 							logging.Warn("Failed to remove files created by the reverted turn", "error", rmErr)
 						}
 					}
@@ -120,6 +145,7 @@ func (a appModel) stageRevert(msgs []message.Message, idx int, restorePrompt boo
 		messages:       removed,
 		snapshotBefore: snapshotBefore,
 		snapshotAfter:  snapshotAfter,
+		snapshotDir:    snapshotDir,
 	})
 
 	userCount := 0
@@ -136,6 +162,7 @@ func (a appModel) stageRevert(msgs []message.Message, idx int, restorePrompt boo
 		files:          files,
 		snapshotBefore: snapshotBefore,
 		snapshotAfter:  snapshotAfter,
+		snapshotDir:    snapshotDir,
 	}
 
 	cmds := []tea.Cmd{
@@ -203,8 +230,9 @@ func (a appModel) clearRevert() (appModel, tea.Cmd) {
 	batch := a.undone[a.revert.batchIndex]
 	ctx := context.Background()
 
-	if batch.snapshotAfter != "" && a.app.Snapshots != nil && a.app.Snapshots.Enabled() {
-		if err := a.app.Snapshots.Restore(ctx, batch.snapshotAfter, nil); err != nil {
+	if batch.snapshotAfter != "" && a.app.Snapshots != nil {
+		svc := a.app.SnapshotFor(batch.snapshotDir)
+		if err := svc.Restore(ctx, batch.snapshotAfter, nil); err != nil {
 			logging.Warn("Failed to restore the worktree on redo", "error", err)
 		} else {
 			// The revert restored files the agent had deleted ("A" in
@@ -216,7 +244,7 @@ func (a appModel) clearRevert() (appModel, tea.Cmd) {
 				}
 			}
 			if len(restoredDeletions) > 0 {
-				if rmErr := a.app.Snapshots.RemoveFiles(ctx, restoredDeletions); rmErr != nil {
+				if rmErr := svc.RemoveFiles(ctx, restoredDeletions); rmErr != nil {
 					logging.Warn("Failed to remove files restored by the reverted turn", "error", rmErr)
 				}
 			}

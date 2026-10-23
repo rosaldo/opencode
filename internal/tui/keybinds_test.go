@@ -44,6 +44,10 @@ func TestResolveKeybindsDefaults(t *testing.T) {
 	if kb.Enabled(KeybindSessionFork) {
 		t.Error("session_fork default must be disabled")
 	}
+	// session_move is slash-only (/move), like the TS default (Spec 09v).
+	if kb.Enabled(KeybindSessionMove) {
+		t.Error("session_move default must be disabled")
+	}
 	// prompt_stash* are disabled in the TS keymap too; the /stash commands
 	// are the entry points (Spec 09q).
 	for _, id := range []KeybindID{KeybindPromptStash, KeybindPromptStashPop, KeybindPromptStashList} {

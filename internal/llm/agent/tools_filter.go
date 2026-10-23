@@ -27,6 +27,9 @@ type AgentToolDeps struct {
 	LspClients      map[string]*lsp.Client
 	DelegationChain []string
 	Snapshots       snapshot.Service
+	// SnapshotFor resolves the snapshot service for a session working
+	// directory (Spec 09v). Nil means "always use Snapshots".
+	SnapshotFor func(dir string) snapshot.Service
 }
 
 // FullToolSet returns every tool available to a full access agent: the local

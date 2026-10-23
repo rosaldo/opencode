@@ -450,3 +450,18 @@ func TestListDirectory(t *testing.T) {
 		assert.True(t, containsDir)
 	})
 }
+
+func TestLsToolUsesContextWorkingDirectory(t *testing.T) {
+	launch := t.TempDir()
+	moved := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(moved, "moved.txt"), []byte("x"), 0644))
+
+	if _, err := config.Load(launch, false); err != nil {
+		t.Fatalf("failed to load config: %v", err)
+	}
+
+	tool := NewLsTool()
+	resp, err := tool.Run(config.WithWorkingDirectory(context.Background(), moved), ToolCall{Input: `{}`})
+	require.NoError(t, err)
+	assert.Contains(t, resp.Content, "moved.txt")
+}

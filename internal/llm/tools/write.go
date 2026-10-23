@@ -113,7 +113,7 @@ func (w *writeTool) Run(ctx context.Context, call ToolCall) (ToolResponse, error
 
 	filePath := params.FilePath
 	if !filepath.IsAbs(filePath) {
-		filePath = filepath.Join(config.WorkingDirectory(), filePath)
+		filePath = filepath.Join(config.WorkingDirectoryFromContext(ctx), filePath)
 	}
 
 	fileInfo, err := os.Stat(filePath)
@@ -161,7 +161,7 @@ func (w *writeTool) Run(ctx context.Context, call ToolCall) (ToolResponse, error
 		filePath,
 	)
 
-	rootDir := config.WorkingDirectory()
+	rootDir := config.WorkingDirectoryFromContext(ctx)
 	permissionPath := filepath.Dir(filePath)
 	if strings.HasPrefix(filePath, rootDir) {
 		permissionPath = rootDir

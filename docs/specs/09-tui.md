@@ -445,11 +445,43 @@ Fechar lacunas da TUI: **keybinds configuráveis**, suporte a **mouse/scroll**, 
       **acima do prompt no editor** (não no transcript) e o Esc do actions fecha direto
       (não volta ao timeline).
 
-- Pendências conscientes: keybind `session_move` ainda sem ação (no TS abre o menu de
-  working directory até o "Move session to worktree" — exige diretório **por sessão** +
-  worktrees, decisão arquitetural pendente); `/undo`/`/redo` não reexecutam o agent
-  (comportamento igual ao TS). Rollback usa snapshots de arquivos com as limitações
-  listadas na Spec 09k (sem symlinks/modos, ignora arquivos ignorados pelo git).
+  - **Working directory por sessão / session_move (09v)** — feito:
+    - `sessions.working_directory` (migration `20261022000001_add_working_directory.sql`,
+      `TEXT NOT NULL DEFAULT ''`; sqlc regenerado à mão no mesmo estilo v1.31.1). Vazio =
+      diretório de lançamento (`config.WorkingDirectory()`). O fork herda o diretório do pai.
+    - `session.SetWorkingDirectory` valida que o caminho existe e é um diretório, resolve
+      para absoluto, persiste via `UpdateSession` e publica `UpdatedEvent`. Vazio reseta.
+    - Contexto: `config.WithWorkingDirectory`/`config.WorkingDirectoryFromContext` carregam o
+      diretório **por requisição**; `agent.processGeneration` aplica o diretório da sessão
+      (ou o já presente no contexto, permitindo que subagentes herdem o cwd do pai). As tools
+      (`bash`, `edit`, `write`, `patch`, `view`, `ls`, `glob`, `grep`, `fetch`) resolvem
+      caminhos relativos por esse contexto. `bash` usa um shell persistente por diretório.
+    - Snapshots: `App.SnapshotFor(dir)` cria/cacheia um `snapshot.Service` por diretório (o
+      diretório de lançamento reusa o serviço do boot); `SnapshotContent.Directory` grava a
+      qual repo o snapshot pertence e o revert usa o serviço certo. Reverter uma mensagem
+      após mover a sessão desfaz só as mensagens (aviso no log), pois os trees vivem em repos
+      diferentes.
+    - TUI: keybind `session_move` (default `none`, igual ao TS v2 — `/move` é a forma
+      descobrível; quando configurado vira sufixo do which-key "move session"); comando
+      `/move` → `openSessionMoveDialog` (bloqueado com sessão ocupada) → diálogo
+      `dialog/session_move.go`: textinput pré-preenchido com o diretório atual, `~`/`~/x`
+      expandidos, caminhos relativos resolvidos contra o diretório atual, Enter aplica,
+      Esc fecha. O header e o sidebar passam a mostrar/listar o diretório da sessão; o
+      sidebar recarrega os arquivos modificados ao receber a sessão atualizada.
+    - Testes: `session_fork_test.go` (`SetWorkingDirectory` válido/inválido/arquivo/reset,
+      fork herda cwd), `dialog/session_move_test.go` (`ResolveDirectoryInput`, Enter/Esc),
+      `ls_test.go` (tool respeita o cwd do contexto), `config_test.go`
+      (`WithWorkingDirectory`/`WorkingDirectoryFromContext`), `keybinds_test.go` (default
+      `none`).
+    - Adaptações conscientes: LSP, watcher de arquivos, MCP/plugins e a linha "cwd:" do
+      **system prompt** continuam ancorados no diretório de lançamento (o TS inicializa esses
+      serviços por sessão). "Move session to worktree" do TS **não** foi implementado — só a
+      troca de diretório (decisão do usuário).
+
+- Pendências conscientes: `/undo`/`/redo` não reexecutam o agent (comportamento igual ao
+  TS). Rollback usa snapshots de arquivos com as limitações listadas na Spec 09k (sem
+  symlinks/modos, ignora arquivos ignorados pelo git). Worktrees por sessão ("Move session
+  to worktree" do TS) não implementados — só troca de diretório.
 
 ## Riscos
 
@@ -460,3 +492,5 @@ Fechar lacunas da TUI: **keybinds configuráveis**, suporte a **mouse/scroll**, 
   projeto em `~/.config/opencode/snapshot/`); não há GC/limpeza automática ainda.
 - Um capture copia todos os arquivos sujos do worktree a cada turno — repos muito grandes com
   muitos arquivos alterados podem adicionar latência ao envio do prompt.
+- Após `/move`, LSP/diagnostics e o system prompt continuam apontando para o diretório de
+  lançamento; tools e snapshots seguem o diretório da sessão.

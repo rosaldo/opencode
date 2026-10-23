@@ -511,7 +511,7 @@ func (m *messagesCmp) initialScreen() string {
 	return baseStyle.Width(m.width).Render(
 		lipgloss.JoinVertical(
 			lipgloss.Top,
-			header(m.width),
+			header(m.width, m.session),
 			"",
 			lspsConfigured(m.width),
 		),
@@ -545,6 +545,16 @@ func (m *messagesCmp) GetSize() (int, int) {
 
 func (m *messagesCmp) SetSession(session session.Session) tea.Cmd {
 	if m.session.ID == session.ID {
+		// A session can change its working directory; refresh the header
+		// without reloading the transcript (Spec 09v).
+		if m.session.WorkingDirectory != session.WorkingDirectory {
+			m.session = session
+			m.rendering = true
+			return func() tea.Msg {
+				m.renderView()
+				return renderFinishedMsg{}
+			}
+		}
 		return nil
 	}
 	m.session = session

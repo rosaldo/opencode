@@ -2,6 +2,7 @@
 package config
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -1415,6 +1416,29 @@ func WorkingDirectory() string {
 		panic("config not loaded")
 	}
 	return cfg.WorkingDir
+}
+
+// workingDirectoryKey carries a per-request working directory (Spec 09v).
+type workingDirectoryKey struct{}
+
+// WithWorkingDirectory returns a context whose tools resolve relative paths
+// against dir instead of the process launch directory.
+func WithWorkingDirectory(ctx context.Context, dir string) context.Context {
+	if dir == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, workingDirectoryKey{}, dir)
+}
+
+// WorkingDirectoryFromContext returns the request working directory, falling
+// back to the process launch directory for the global context.
+func WorkingDirectoryFromContext(ctx context.Context) string {
+	if ctx != nil {
+		if dir, ok := ctx.Value(workingDirectoryKey{}).(string); ok && dir != "" {
+			return dir
+		}
+	}
+	return WorkingDirectory()
 }
 
 func UpdateAgentModel(agentName AgentName, modelID models.ModelID) error {

@@ -274,7 +274,7 @@ func (b *bashTool) Run(ctx context.Context, call ToolCall) (ToolResponse, error)
 		p := b.permissions.Request(
 			permission.CreatePermissionRequest{
 				SessionID:   sessionID,
-				Path:        config.WorkingDirectory(),
+				Path:        config.WorkingDirectoryFromContext(ctx),
 				ToolName:    BashToolName,
 				Action:      "execute",
 				Description: fmt.Sprintf("Execute command: %s", params.Command),
@@ -288,7 +288,7 @@ func (b *bashTool) Run(ctx context.Context, call ToolCall) (ToolResponse, error)
 		}
 	}
 	startTime := time.Now()
-	shell := shell.GetPersistentShell(config.WorkingDirectory())
+	shell := shell.GetPersistentShell(config.WorkingDirectoryFromContext(ctx))
 	stdout, stderr, exitCode, interrupted, err := shell.Exec(ctx, params.Command, params.Timeout)
 	if err != nil {
 		return ToolResponse{}, fmt.Errorf("error executing command: %w", err)

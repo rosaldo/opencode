@@ -78,13 +78,13 @@ type RevertBannerMsg struct {
 // become permanent) unless the user clears it first (Spec 09u).
 type CommitRevertMsg struct{}
 
-func header(width int) string {
+func header(width int, session session.Session) string {
 	return lipgloss.JoinVertical(
 		lipgloss.Top,
 		logo(width),
 		repo(width),
 		"",
-		cwd(width),
+		cwd(width, session),
 	)
 }
 
@@ -182,8 +182,12 @@ func repo(width int) string {
 		Render(repo)
 }
 
-func cwd(width int) string {
-	cwd := fmt.Sprintf("cwd: %s", config.WorkingDirectory())
+func cwd(width int, session session.Session) string {
+	dir := session.WorkingDirectory
+	if dir == "" {
+		dir = config.WorkingDirectory()
+	}
+	cwd := fmt.Sprintf("cwd: %s", dir)
 	t := theme.CurrentTheme()
 
 	return styles.BaseStyle().
