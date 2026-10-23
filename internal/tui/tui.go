@@ -1568,11 +1568,13 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 	default:
-		f, filepickerCmd := a.filepicker.Update(msg)
-		a.filepicker = f.(dialog.FilepickerCmp)
-		cmds = append(cmds, filepickerCmd)
-		if a.showFilepicker && a.filepicker.IsCWDFocused() {
-			return a, tea.Batch(cmds...)
+		if a.showFilepicker {
+			f, filepickerCmd := a.filepicker.Update(msg)
+			a.filepicker = f.(dialog.FilepickerCmp)
+			cmds = append(cmds, filepickerCmd)
+			if a.filepicker.IsCWDFocused() {
+				return a, tea.Batch(cmds...)
+			}
 		}
 
 	}
