@@ -25,3 +25,15 @@ The current phase and acceptance criteria live in the index and in the matching 
   delegation by name and `@`-mention.
 - Keep backward compatibility with the existing config (`~/.opencode.json`, `<wd>/.opencode.json`);
   `agent`/`defaultAgent` are read as *deprecated*, feeding the same single source.
+
+## Build & dogfood
+- Binary: build into `./bin/opencode` (gitignored). Do **not** leave a `opencode` binary in the repo root.
+  ```bash
+  mkdir -p bin && go build -o bin/opencode .
+  ```
+- Run from a target project with `bin/` on `PATH` (relative, no absolute paths to the target). For example:
+  ```bash
+  export PATH="/home/rosaldo/Programas/git/IATools/opencode/bin:$PATH"
+  cd /path/to/your-project
+  opencode
+  ```
