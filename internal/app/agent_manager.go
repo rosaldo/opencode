@@ -32,6 +32,7 @@ type AgentManager struct {
 
 	deps    agent.AgentToolDeps
 	ctx     context.Context
+	cancel  context.CancelFunc
 	broker  *pubsub.Broker[agent.AgentEvent]
 	fanInWG sync.WaitGroup
 }
@@ -40,11 +41,13 @@ type AgentManager struct {
 // default (or "coder"). The default agent is instantiated eagerly so
 // misconfiguration surfaces at boot; every other agent is created on demand.
 func NewAgentManager(ctx context.Context, deps agent.AgentToolDeps) *AgentManager {
+	ctx, cancel := context.WithCancel(ctx)
 	m := &AgentManager{
 		active: agentdef.Get().Default(),
 		cache:  make(map[string]agent.Service),
 		deps:   deps,
 		ctx:    ctx,
+		cancel: cancel,
 		broker: pubsub.NewBroker[agent.AgentEvent](),
 	}
 	if m.active == "" {
@@ -145,8 +148,13 @@ func (m *AgentManager) fanIn(name string, svc agent.Service) {
 	}()
 }
 
-// Shutdown stops the event fan-in after the app context is cancelled.
+// Shutdown stops the event fan-in. It cancels the manager context first: the
+// fan-in goroutines only exit when their subscription channel closes, which
+// happens on context cancellation (or on broker shutdown).
 func (m *AgentManager) Shutdown() {
+	if m.cancel != nil {
+		m.cancel()
+	}
 	m.fanInWG.Wait()
 	m.broker.Shutdown()
 }

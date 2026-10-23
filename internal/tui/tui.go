@@ -673,6 +673,10 @@ func (a appModel) openHelp() (appModel, tea.Cmd) {
 // toggleQuit mirrors the quit key: it closes the other dialogs instead of
 // quitting right away (ctrl+c and /exit, Spec 09h).
 func (a appModel) toggleQuit() (appModel, tea.Cmd) {
+	if a.showQuit {
+		// A second press (ctrl+c twice) confirms the quit.
+		return a, tea.Quit
+	}
 	a.showQuit = !a.showQuit
 	a.showHelp = false
 	a.showSessionDialog = false
@@ -1366,12 +1370,22 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case chat.SessionSelectedMsg:
 		a.selectedSession = msg
 		a.sessionDialog.SetSelectedSession(msg.ID)
+		// The chat page (and the message list) must also see the selection,
+		// otherwise the transcript keeps showing the previous session.
+		var cmds []tea.Cmd
+		if a.currentPage == page.ChatPage {
+			var cmd tea.Cmd
+			a, cmd = a.updateChatPage(msg)
+			cmds = append(cmds, cmd)
+		}
 		// Re-show the staged-revert banner when returning to its session
 		// (Spec 09u); other sessions hide it.
 		if a.revert != nil && a.revert.sessionID == msg.ID {
-			return a, util.CmdHandler(chat.RevertBannerMsg{Text: a.revert.bannerText()})
+			cmds = append(cmds, util.CmdHandler(chat.RevertBannerMsg{Text: a.revert.bannerText()}))
+		} else {
+			cmds = append(cmds, util.CmdHandler(chat.RevertBannerMsg{Text: ""}))
 		}
-		return a, util.CmdHandler(chat.RevertBannerMsg{Text: ""})
+		return a, tea.Batch(cmds...)
 
 	case pubsub.Event[session.Session]:
 		if msg.Type == pubsub.UpdatedEvent && msg.Payload.ID == a.selectedSession.ID {
