@@ -65,6 +65,8 @@ Nesta fase: **parse + validação + defaults** de todas; **comportamento** das q
 fica lá; as demais (commands/references/skills/formatter/watcher/snapshots/media/tool_output/
 websearch/compaction/warming/worktree/update/username) podem ser implementadas aqui ou
 subdivididas em 11b/11c.
+O comportamento de **`snapshots`** (default ligado, desligado também quando o worktree não é um
+repo git) está implementado junto do undo/revert na [Spec 09k/09u](09-tui.md).
 
 ### Gerador de schema
 

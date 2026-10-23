@@ -44,6 +44,9 @@ type editorCmp struct {
 	history      []string
 	historyIdx   int
 	historyDraft string
+	// revertBanner is the staged-revert banner text rendered above the prompt
+	// (Spec 09u); empty hides it.
+	revertBanner string
 }
 
 type EditorKeyMaps struct {
@@ -348,10 +351,15 @@ func (m *editorCmp) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.ID != m.session.ID {
 			m.session = msg
 			m.resetHistory()
+			m.revertBanner = ""
 		}
 		return m, nil
 	case SessionClearedMsg:
 		m.resetHistory()
+		m.revertBanner = ""
+		return m, nil
+	case RevertBannerMsg:
+		m.revertBanner = msg.Text
 		return m, nil
 	case OpenEditorMsg:
 		if m.app != nil && m.app.Agents.IsSessionBusy(m.session.ID) {
@@ -479,15 +487,28 @@ func (m *editorCmp) View() string {
 		style = style.Foreground(t.Warning())
 	}
 
-	if len(m.attachments) == 0 {
-		return lipgloss.JoinHorizontal(lipgloss.Top, style.Render(prompt), m.textarea.View())
+	banner := ""
+	if m.revertBanner != "" {
+		m.textarea.SetHeight(max(1, m.height-1))
+		bannerStyle := lipgloss.NewStyle().
+			Padding(0, 0, 0, 1).
+			Foreground(t.TextMuted())
+		banner = bannerStyle.Render(m.revertBanner)
 	}
-	m.textarea.SetHeight(m.height - 1)
-	return lipgloss.JoinVertical(lipgloss.Top,
-		m.attachmentsContent(),
-		lipgloss.JoinHorizontal(lipgloss.Top, style.Render(prompt),
-			m.textarea.View()),
-	)
+
+	body := lipgloss.JoinHorizontal(lipgloss.Top, style.Render(prompt), m.textarea.View())
+	if len(m.attachments) > 0 {
+		m.textarea.SetHeight(m.height - 1)
+		body = lipgloss.JoinVertical(lipgloss.Top,
+			m.attachmentsContent(),
+			lipgloss.JoinHorizontal(lipgloss.Top, style.Render(prompt),
+				m.textarea.View()),
+		)
+	}
+	if banner == "" {
+		return body
+	}
+	return lipgloss.JoinVertical(lipgloss.Top, banner, body)
 }
 
 func (m *editorCmp) SetSize(width, height int) tea.Cmd {

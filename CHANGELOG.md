@@ -2,6 +2,7 @@
 
 > Generated from `git` by `scripts/gen-changelog.sh` — do not edit by hand.
 
+- **v1.22.0** (2026-10-22) · `feat` — tui: snapshot file rollback for undo and revert
 - **v1.21.0** (2026-10-22) · `feat` — tui: message actions dialog with revert (09u)
 - **v1.20.0** (2026-10-22) · `feat` — tui: real sixel image encoding (09t)
 - **v1.19.0** (2026-10-22) · `feat` — tui: group command palette by context (09s)

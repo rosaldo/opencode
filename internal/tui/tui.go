@@ -768,6 +768,10 @@ type appModel struct {
 	// undone stacks the batches removed by /undo so /redo can restore them
 	// (Spec 09k).
 	undone []undoneBatch
+	// revert is the staged revert (Spec 09u, parity with the TS
+	// session.revert): set by /undo and by the timeline Revert action, cleared
+	// by /redo (restores files and messages) or by the next turn (commits).
+	revert *stagedRevert
 }
 
 func (a appModel) Init() tea.Cmd {
@@ -1037,6 +1041,10 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case redoMessageMsg:
 		return a.redoMessage()
 
+	case chat.CommitRevertMsg:
+		// A new turn makes a staged revert permanent (Spec 09u).
+		return a.commitRevert()
+
 	case utilComponents.ListActivatedMsg:
 		// SimpleList clicks are relayed back to the owning dialog (Spec 09n).
 		if a.showCommandDialog {
@@ -1285,6 +1293,12 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case chat.SessionSelectedMsg:
 		a.selectedSession = msg
 		a.sessionDialog.SetSelectedSession(msg.ID)
+		// Re-show the staged-revert banner when returning to its session
+		// (Spec 09u); other sessions hide it.
+		if a.revert != nil && a.revert.sessionID == msg.ID {
+			return a, util.CmdHandler(chat.RevertBannerMsg{Text: a.revert.bannerText()})
+		}
+		return a, util.CmdHandler(chat.RevertBannerMsg{Text: ""})
 
 	case pubsub.Event[session.Session]:
 		if msg.Type == pubsub.UpdatedEvent && msg.Payload.ID == a.selectedSession.ID {
@@ -2293,7 +2307,7 @@ If there are Cursor rules (in .cursor/rules/ or .cursorrules) or Copilot rules (
 		ID:          "undo",
 		Group:       "Session",
 		Title:       "Undo Message",
-		Description: "Remove the last user message and its responses (keeps file changes)",
+		Description: "Revert the last user message, its responses and their file changes",
 		Handler: func(cmd dialog.Command) tea.Cmd {
 			return util.CmdHandler(undoMessageMsg{})
 		},
@@ -2302,7 +2316,7 @@ If there are Cursor rules (in .cursor/rules/ or .cursorrules) or Copilot rules (
 		ID:          "redo",
 		Group:       "Session",
 		Title:       "Redo Message",
-		Description: "Restore the message removed by the last undo",
+		Description: "Clear the staged revert: restore the messages and file changes",
 		Handler: func(cmd dialog.Command) tea.Cmd {
 			return util.CmdHandler(redoMessageMsg{})
 		},

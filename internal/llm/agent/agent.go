@@ -21,6 +21,7 @@ import (
 	"github.com/opencode-ai/opencode/internal/plugin"
 	"github.com/opencode-ai/opencode/internal/pubsub"
 	"github.com/opencode-ai/opencode/internal/session"
+	"github.com/opencode-ai/opencode/internal/snapshot"
 )
 
 // Common errors
@@ -61,8 +62,9 @@ type Service interface {
 
 type agent struct {
 	*pubsub.Broker[AgentEvent]
-	sessions session.Service
-	messages message.Service
+	sessions  session.Service
+	messages  message.Service
+	snapshots snapshot.Service
 
 	tools    []tools.BaseTool
 	provider provider.Provider
@@ -77,6 +79,7 @@ func NewAgent(
 	name string,
 	sessions session.Service,
 	messages message.Service,
+	snapshots snapshot.Service,
 	agentTools []tools.BaseTool,
 ) (Service, error) {
 	agentProvider, err := createAgentProvider(name)
@@ -109,6 +112,7 @@ func NewAgent(
 		provider:          agentProvider,
 		messages:          messages,
 		sessions:          sessions,
+		snapshots:         snapshots,
 		tools:             agentTools,
 		titleProvider:     titleProvider,
 		summarizeProvider: summarizeProvider,
@@ -278,6 +282,21 @@ func (a *agent) processGeneration(ctx context.Context, sessionID, content string
 	if err != nil {
 		return a.err(fmt.Errorf("failed to create user message: %w", err))
 	}
+
+	// Capture a snapshot before processing (Spec 09k/09u file rollback).
+	// The snapshot is stored with the user message so revert can restore
+	// the worktree to the state before this turn.
+	if a.snapshots != nil && a.snapshots.Enabled() {
+		if snap, snapErr := a.snapshots.Capture(ctx); snapErr == nil && snap != nil {
+			userMsg.Parts = append(userMsg.Parts, message.SnapshotContent{
+				SnapshotID: snap.ID,
+			})
+			if updateErr := a.messages.Update(ctx, userMsg); updateErr != nil {
+				logging.Debug("Failed to store snapshot with user message", "error", updateErr)
+			}
+		}
+	}
+
 	// Append the new user message to the conversation history.
 	msgHistory := append(msgs, userMsg)
 

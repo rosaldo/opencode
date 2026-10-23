@@ -18,9 +18,9 @@ type MessageAction string
 const (
 	// MessageActionJump views the message in the session (TS "Jump to").
 	MessageActionJump MessageAction = "jump"
-	// MessageActionRevert undoes the message and everything after it (TS
-	// "Revert"; the file rollback of the TS implementation is deferred,
-	// Spec 09k/09u).
+	// MessageActionRevert undoes the message, everything after it and their
+	// file changes (TS "Revert"; the banner/redo staged lifecycle matches the
+	// TS session.revert, Spec 09u).
 	MessageActionRevert MessageAction = "revert"
 	// MessageActionCopy puts the message text on the clipboard (TS "Copy").
 	MessageActionCopy MessageAction = "copy"
@@ -104,7 +104,7 @@ func messageActions(msg *message.Message) []messageActionItem {
 		{
 			Action:      MessageActionRevert,
 			Title:       "Revert",
-			Description: "undo messages from this point",
+			Description: "undo messages and file changes from this point",
 			Enabled:     true,
 		},
 		{

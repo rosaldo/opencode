@@ -15,6 +15,7 @@ func TestMarshallUnmarshallRoundTrip(t *testing.T) {
 		ToolCall{ID: "call-1", Name: "bash", Input: `{"command":"ls"}`, Type: "function"},
 		ToolResult{ToolCallID: "call-1", Name: "bash", Content: "ok", Metadata: "{}"},
 		Finish{Reason: FinishReasonEndTurn, Time: 1700000000},
+		SnapshotContent{SnapshotID: "tree-abc", Files: []string{"a.txt", "b.txt"}},
 	}
 
 	raw, err := marshallParts(parts)
@@ -51,6 +52,9 @@ func TestMarshallUnmarshallRoundTrip(t *testing.T) {
 	}
 	if f, ok := got[6].(Finish); !ok || f.Reason != FinishReasonEndTurn || f.Time != 1700000000 {
 		t.Errorf("finish = %#v (ok=%v)", got[6], ok)
+	}
+	if sc, ok := got[7].(SnapshotContent); !ok || sc.SnapshotID != "tree-abc" || len(sc.Files) != 2 {
+		t.Errorf("snapshot = %#v (ok=%v)", got[7], ok)
 	}
 }
 

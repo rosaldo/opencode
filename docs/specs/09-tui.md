@@ -202,21 +202,44 @@ Fechar lacunas da TUI: **keybinds configuráveis**, suporte a **mouse/scroll**, 
     - Testes: `list_test.go` (plain text/alvo de cópia), `util/clipboard_test.go`
       (helper ausente/encadeado, sem tocar no clipboard real), `leader_test.go`/
       `keybinds_test.go` (sufixo `y`).
-  - **Undo/Redo de mensagem (09k)** — feito (sem rollback de git):
-    - `/undo` → `undoMessageMsg` → `appModel.undoMessage()`: apaga a mensagem do usuário mais
-      recente e **todas** as mensagens seguintes (`Messages.Delete`), empilha o lote
-      (`undoneBatch`) e devolve o texto ao prompt (`chat.RestorePromptMsg`, só se o draft estiver
-      vazio) para edição. Guards: sem sessão, sessão ocupada (`IsSessionBusy`), nada a desfazer.
-    - `/redo` → `redoMessageMsg` → recria o lote na mesma ordem (`Messages.Create`); partes
-      `Finish` sintéticas são removidas dos papéis não-assistente antes de recriar (o serviço
-      re-anexa uma). **Não** reexecuta o agent e **não** mexe no working tree.
+  - **Undo/Redo de mensagem (09k)** — feito (com rollback de arquivos via snapshots):
+    - `/undo` → `undoMessageMsg` → `appModel.undoMessage()` → `stageRevert`: apaga a mensagem
+      de usuário mais recente e **todas** as mensagens seguintes (`Messages.Delete`), empilha o
+      lote (`undoneBatch`) e devolve o texto ao prompt (`chat.RestorePromptMsg`, só se o draft
+      estiver vazio) para edição. Guards: sem sessão, sessão ocupada (`IsSessionBusy`), nada a
+      desfazer.
+    - O turno desfeito também é desfeito no **working tree**: cada turno de usuário guarda um
+      snapshot (`SnapshotContent` na user message); o undo restaura o snapshot capturado antes
+      do turno (`snapshot.Service.Restore`), apaga arquivos criados pelo turno e mostra o banner
+      "N messages reverted · M files rolled back" (ver 09u).
+    - `/redo` → `redoMessageMsg` → `clearRevert`: restaura o snapshot pós-turno, recria o lote na
+      mesma ordem (`Messages.Create`) e limpa o banner. Sem revert staged, avisa "Nothing to
+      redo" (não é uma pilha de redo). Partes `Finish` sintéticas são removidas dos papéis
+      não-assistente antes de recriar. **Não** reexecuta o agent.
     - Keybinds: `messages_undo` (`<leader>u`, igual ao TS) e `messages_redo` (`<leader>.` — o
       default do TS é `<leader>r`, colidindo com o `session_rename` legado deste fork; `.` mantém
       o mnemônico do vim). Sufixos `u`/`.` no which-key ("undo/redo message").
     - `applyLeaderBindings` agora percorre as ações em **ordem determinística** e avisa no log
       quando dois keybinds disputam o mesmo sufixo (o primeiro da lista vence).
-    - Testes: `undo_test.go` (`lastUserMessageIndex`, `stripFinishParts`), `editor_history_test.go`
-      (`RestorePromptMsg` respeita draft), `leader_test.go`/`keybinds_test.go` (`u`/`.`).
+    - **Snapshot service (`internal/snapshot`)**: repo git sombra em
+      `$XDG_CONFIG_HOME/opencode/snapshot/<hash do worktree>` (fora da árvore do usuário), com
+      `Capture` (sincroniza arquivos reportados pelo `git status` + `write-tree`), `Restore`
+      (`read-tree` + `checkout-index` para um diretório temporário e cópia para o worktree),
+      `Diff`/`Files` (`git diff --name-status` entre trees) e `RemoveFiles` (apaga arquivos que
+      não existiam no snapshot alvo). Na primeira execução o repo sombra é **semeado** com todos
+      os arquivos rastreados/não-ignorados (`git ls-files`), para que um capture em árvore limpa
+      já conheça o conteúdo pré-turno. Desabilitado quando o worktree não é um repo git ou
+      `snapshots: false` na config.
+    - Testes: `undo_test.go` (`lastUserMessageIndex`, `stripFinishParts`), `message_actions_test.go`
+      (`boundarySnapshot`, banner), `message/content_test.go` (round-trip do `SnapshotContent`),
+      `snapshot/snapshot_test.go` (capture/diff/restore, seed em árvore limpa, arquivo criado como
+      `D` no diff reverso, `RemoveFiles`, repo não-git), `git/git_test.go`.
+    - Adaptações conscientes: o snapshot é capturado **por turno de usuário** (não por assistant
+      message como `snapshot.start`/`snapshot.files` no TS); o revert staged é um **slot único
+      global** (o TS tem `session.revert` por sessão) — stagear em outra sessão avisa "Another
+      session has a staged revert; clear it first"; o banner aparece **acima do prompt no
+      editor**, não no transcript; symlinks são copiados como arquivos regulares e o modo de
+      arquivo não é preservado; arquivos ignorados pelo git não entram no snapshot.
   - **Detalhes de tool (09l)** — feito:
     - `/details` → `chat.ToggleDetailsMsg` → `messagesCmp.showDetails` (default **visível**):
       quando oculto, tool calls finalizados renderizam só `nome: params` (uma linha) — sem o
@@ -391,16 +414,21 @@ Fechar lacunas da TUI: **keybinds configuráveis**, suporte a **mouse/scroll**, 
     - Enter/clique no timeline agora emitem `OpenMessageActionsMsg` → `openMessageActions`
       carrega a mensagem (`Messages.Get`) e troca o picker pelo novo diálogo
       `dialog/message.go` — o mesmo option set do `DialogMessage` ("Message Actions") do
-      TS: **Jump to** ("view message in session"), **Revert** ("undo messages from this
-      point" — ver adaptação), **Copy** ("message text to clipboard") e **Fork**
+      TS: **Jump to** ("view message in session"), **Revert** ("undo messages and file
+      changes from this point"), **Copy** ("message text to clipboard") e **Fork**
       ("create a new session", só para mensagens de usuário, como no TS).
-    - Ações: Jump → fecha e rola o transcript (`chat.JumpToMessageMsg`, o comportamento
-      antigo do Enter); Revert → `revertToMessage` (`message_actions.go`): remove a
-      mensagem escolhida e **todas as seguintes** via `Messages.Delete`, empilha o lote
-      em `undone` para `/redo` e devolve o texto da mensagem de usuário ao composer
-      (mesma seam do `/undo`); Copy → texto da mensagem no clipboard, com os mesmos
-      toasts do `<leader>y`; Fork → abre o fork picker preselecionado na mensagem
-      (`ForkDialog.SelectMessage` + `SimpleList.SelectIndex`).
+    - Jump → fecha e rola o transcript (`chat.JumpToMessageMsg`, o comportamento antigo do
+      Enter). Revert → `revertToMessage` → `stageRevert` (mesma seam do `/undo`, com
+      `restorePrompt` devolvendo o texto da mensagem de usuário ao composer).
+    - Revert **stageia** o rollback como no TS: `stageRevert` remove a mensagem escolhida e
+      todas as seguintes, captura o trabalho pós-turno (`snapshotAfter`), restaura o snapshot
+      pré-turno, guarda o diff (`files`) e exibe o banner "◇ N messages reverted · M files
+      rolled back · redo restores" acima do prompt. O estado (slot único global) permanece até
+      `/redo` (clear: restaura mensagens + árvore) ou até um **novo prompt**, que emite
+      `chat.CommitRevertMsg` e torna o rollback permanente antes de rodar o agent.
+    - Copy → texto da mensagem no clipboard, com os mesmos toasts do `<leader>y`; Fork → abre o
+      fork picker preselecionado na mensagem (`ForkDialog.SelectMessage` +
+      `SimpleList.SelectIndex`).
     - Diálogo: `SimpleList[messageActionItem]` com título + descrição muted como rodapé;
       `SetMessage` zera a seleção (Jump to preselecionado) e desabilita Copy quando não
       há mensagem; Esc → fecha; clique/wheel idênticos aos demais diálogos (relay de
@@ -410,21 +438,25 @@ Fechar lacunas da TUI: **keybinds configuráveis**, suporte a **mouse/scroll**, 
       Enter=Jump, navegação até Fork, Esc, clique, reset da seleção, Enter ignorado sem
       mensagem), `timeline_test.go` (Enter/clique → `OpenMessageActionsMsg`),
       `fork_test.go` (`SelectMessage`), `simple-list_test.go` (`SelectIndex`).
-    - Adaptações conscientes: o TS **stageia** o revert (estado `session.revert` +
-      banner "N messages reverted" com clear e rollback de arquivos via snapshots);
-      aqui o revert é aplicado na hora, sem tocar na árvore de trabalho (mesma decisão
-      de escopo da Spec 09k — recuperação via `/redo`) e a descrição da ação diz
-      "from this point" em vez de "and file changes"; Esc do actions fecha direto (não
-      volta ao timeline).
+    - Adaptações conscientes: o TS mantém `session.revert` **por sessão**; aqui o revert
+      staged usa um **slot único global** (stagear em outra sessão avisa "Another session
+      has a staged revert; clear it first"). O snapshot é **por turno de usuário** (o TS
+      captura `snapshot.start`/`snapshot.files` por assistant message), o banner aparece
+      **acima do prompt no editor** (não no transcript) e o Esc do actions fecha direto
+      (não volta ao timeline).
 
 - Pendências conscientes: keybind `session_move` ainda sem ação (no TS abre o menu de
   working directory até o "Move session to worktree" — exige diretório **por sessão** +
-  worktrees, decisão arquitetural pendente); `/undo`/`/redo` **não** fazem rollback de
-  arquivos via git como no TS nem reexecutam o agent (decisão consciente de escopo,
-  Spec 09k — vale também para o Revert da Spec 09u).
+  worktrees, decisão arquitetural pendente); `/undo`/`/redo` não reexecutam o agent
+  (comportamento igual ao TS). Rollback usa snapshots de arquivos com as limitações
+  listadas na Spec 09k (sem symlinks/modos, ignora arquivos ignorados pelo git).
 
 ## Riscos
 
 - Mouse muda eventos: revisar handlers para não quebrar teclado.
 - Paste de imagem é dependente de plataforma (X11/Wayland/macOS) — degradar graciosamente.
 - Coordenar formato de keybinds com a spec 11 para não duplicar.
+- O repo de snapshots ocupa disco proporcional ao tamanho do worktree semeado (uma cópia por
+  projeto em `~/.config/opencode/snapshot/`); não há GC/limpeza automática ainda.
+- Um capture copia todos os arquivos sujos do worktree a cada turno — repos muito grandes com
+  muitos arquivos alterados podem adicionar latência ao envio do prompt.

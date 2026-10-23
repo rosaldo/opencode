@@ -101,6 +101,26 @@ type ToolResult struct {
 
 func (ToolResult) isPart() {}
 
+// SnapshotContent tracks file snapshots associated with a message.
+// It is stored as a content part so it persists with the message.
+type SnapshotContent struct {
+	// SnapshotID is the tree hash captured before this message was processed.
+	SnapshotID string `json:"snapshot_id"`
+	// Files lists the relative paths that were modified by this message.
+	Files []string `json:"files,omitempty"`
+}
+
+func (SnapshotContent) isPart() {}
+
+func (m *Message) SnapshotContent() *SnapshotContent {
+	for _, part := range m.Parts {
+		if c, ok := part.(SnapshotContent); ok {
+			return &c
+		}
+	}
+	return nil
+}
+
 type Finish struct {
 	Reason FinishReason `json:"reason"`
 	Time   int64        `json:"time"`

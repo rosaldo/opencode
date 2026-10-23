@@ -20,6 +20,7 @@ import (
 	"github.com/opencode-ai/opencode/internal/permission"
 	"github.com/opencode-ai/opencode/internal/plugin"
 	"github.com/opencode-ai/opencode/internal/session"
+	"github.com/opencode-ai/opencode/internal/snapshot"
 	"github.com/opencode-ai/opencode/internal/tui/theme"
 )
 
@@ -28,6 +29,7 @@ type App struct {
 	Messages    message.Service
 	History     history.Service
 	Permissions permission.Service
+	Snapshots   snapshot.Service
 
 	Agents *AgentManager
 
@@ -45,12 +47,14 @@ func New(ctx context.Context, conn *sql.DB) (*App, error) {
 	sessions := session.NewService(q)
 	messages := message.NewService(q)
 	files := history.NewService(q, conn)
+	snapshots := snapshot.NewService(config.WorkingDirectory())
 
 	app := &App{
 		Sessions:    sessions,
 		Messages:    messages,
 		History:     files,
 		Permissions: permission.NewPermissionService(),
+		Snapshots:   snapshots,
 		LSPClients:  make(map[string]*lsp.Client),
 	}
 
@@ -66,6 +70,7 @@ func New(ctx context.Context, conn *sql.DB) (*App, error) {
 		Messages:    app.Messages,
 		History:     app.History,
 		LspClients:  app.LSPClients,
+		Snapshots:   app.Snapshots,
 	})
 
 	return app, nil

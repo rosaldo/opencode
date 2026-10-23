@@ -12,6 +12,7 @@ import (
 	"github.com/opencode-ai/opencode/internal/message"
 	"github.com/opencode-ai/opencode/internal/permission"
 	"github.com/opencode-ai/opencode/internal/session"
+	"github.com/opencode-ai/opencode/internal/snapshot"
 )
 
 // AgentToolDeps carries the services an agent's tools need. The app builds one
@@ -25,6 +26,7 @@ type AgentToolDeps struct {
 	History         history.Service
 	LspClients      map[string]*lsp.Client
 	DelegationChain []string
+	Snapshots       snapshot.Service
 }
 
 // FullToolSet returns every tool available to a full access agent: the local

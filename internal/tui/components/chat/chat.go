@@ -67,6 +67,17 @@ type RunShellMsg struct {
 
 type EditorFocusMsg bool
 
+// RevertBannerMsg carries the "N messages reverted" banner text shown above
+// the prompt while a revert is staged (Spec 09u). An empty Text hides it.
+type RevertBannerMsg struct {
+	Text string
+}
+
+// CommitRevertMsg is emitted when a new turn starts: like the TS version, the
+// staged revert is committed (the truncated transcript and rolled-back files
+// become permanent) unless the user clears it first (Spec 09u).
+type CommitRevertMsg struct{}
+
 func header(width int) string {
 	return lipgloss.JoinVertical(
 		lipgloss.Top,

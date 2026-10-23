@@ -216,6 +216,10 @@ func (p *chatPage) sendMessage(text string, mentionedAgent string, attachments [
 		cmds = append(cmds, util.CmdHandler(chat.SessionSelectedMsg(session)))
 	}
 
+	// A new turn commits a staged revert (Spec 09u): the truncated transcript
+	// and the rolled-back files become permanent, matching the TS behavior.
+	cmds = append(cmds, util.CmdHandler(chat.CommitRevertMsg{}))
+
 	// An @-mention routes the turn to the named agent in a child session
 	// instead of the active primary agent.
 	if mentionedAgent != "" {

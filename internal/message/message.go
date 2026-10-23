@@ -170,6 +170,7 @@ const (
 	toolCallType   partType = "tool_call"
 	toolResultType partType = "tool_result"
 	finishType     partType = "finish"
+	snapshotType   partType = "snapshot"
 )
 
 type partWrapper struct {
@@ -196,6 +197,8 @@ func marshallParts(parts []ContentPart) ([]byte, error) {
 			typ = toolCallType
 		case ToolResult:
 			typ = toolResultType
+		case SnapshotContent:
+			typ = snapshotType
 		case Finish:
 			typ = finishType
 		default:
@@ -262,6 +265,12 @@ func unmarshallParts(data []byte) ([]ContentPart, error) {
 			parts = append(parts, part)
 		case toolResultType:
 			part := ToolResult{}
+			if err := json.Unmarshal(wrapper.Data, &part); err != nil {
+				return nil, err
+			}
+			parts = append(parts, part)
+		case snapshotType:
+			part := SnapshotContent{}
 			if err := json.Unmarshal(wrapper.Data, &part); err != nil {
 				return nil, err
 			}

@@ -150,7 +150,7 @@ func (b *agentTool) Run(ctx context.Context, call tools.ToolCall) (tools.ToolRes
 		return tools.ToolResponse{}, fmt.Errorf("session_id and message_id are required")
 	}
 
-	agent, err := NewAgent(name, b.deps.Sessions, b.deps.Messages, ToolsForDefinition(target, b.childDeps()))
+	agent, err := NewAgent(name, b.deps.Sessions, b.deps.Messages, b.deps.Snapshots, ToolsForDefinition(target, b.childDeps()))
 	if err != nil {
 		return tools.ToolResponse{}, fmt.Errorf("error creating agent: %s", err)
 	}
