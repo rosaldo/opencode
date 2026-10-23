@@ -83,7 +83,7 @@ var defaultKeybinds = map[KeybindID]string{
 	KeybindHistoryNext: "down",
 	// Like the TS default: /thinking is the discoverable way to toggle it.
 	KeybindDisplayThink: noneValue,
-	KeybindMessagesCopy: "ctrl+c",
+	KeybindMessagesCopy: "<leader>y",
 	KeybindMessagesUndo: "<leader>u",
 	// The TS default for messages_redo is <leader>r, but that suffix is
 	// taken by session_rename in this fork; "." keeps the vim redo mnemonic.

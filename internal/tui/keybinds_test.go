@@ -30,6 +30,7 @@ func TestResolveKeybindsDefaults(t *testing.T) {
 		KeybindSessionRename:   {"ctrl+x", "r"},
 		KeybindSessionDelete:   {"ctrl+x", "d"},
 		KeybindSessionTimeline: {"ctrl+x", "g"},
+		KeybindMessagesCopy:    {"ctrl+x", "y"},
 	}
 	for id, want := range cases {
 		if got := kb.Keys(id); !reflect.DeepEqual(got, want) {
@@ -141,6 +142,7 @@ func TestApplyLeaderBindingsDefaults(t *testing.T) {
 		"c": leaderCompactSession,
 		"b": leaderToggleSidebar,
 		"x": leaderExportSession,
+		"y": leaderCopyMessage,
 		"u": leaderUndoMessage,
 		".": leaderRedoMessage,
 		"e": leaderOpenEditor,
@@ -149,15 +151,8 @@ func TestApplyLeaderBindingsDefaults(t *testing.T) {
 	if !reflect.DeepEqual(leaderSuffixes, want) {
 		t.Errorf("suffixes = %v, want %v", leaderSuffixes, want)
 	}
-	if _, ok := leaderSuffixes["y"]; ok {
-		t.Error("messages_copy must not be a leader suffix")
-	}
-	binding, ok := leaderDirect[leaderCopyMessage]
-	if !ok {
-		t.Fatal("messages_copy must be registered as a direct binding")
-	}
-	if got := binding.Keys(); !reflect.DeepEqual(got, []string{"ctrl+c"}) {
-		t.Errorf("direct messages_copy = %v, want [ctrl+c]", got)
+	if len(leaderDirect) != 0 {
+		t.Errorf("direct = %v, want none with the default leader", leaderDirect)
 	}
 }
 
@@ -182,6 +177,7 @@ func TestApplyLeaderBindingsReconfigured(t *testing.T) {
 		"r": leaderRenameSession,
 		"b": leaderToggleSidebar,
 		"x": leaderExportSession,
+		"y": leaderCopyMessage,
 		"u": leaderUndoMessage,
 		".": leaderRedoMessage,
 		"e": leaderOpenEditor,
@@ -196,9 +192,6 @@ func TestApplyLeaderBindingsReconfigured(t *testing.T) {
 	if _, ok := leaderSuffixes["c"]; ok {
 		t.Error("session_compact disabled must not register a suffix")
 	}
-	if _, ok := leaderSuffixes["y"]; ok {
-		t.Error("messages_copy bound as direct must not be a suffix")
-	}
 
 	binding, ok := leaderDirect[leaderDeleteSession]
 	if !ok {
@@ -206,11 +199,6 @@ func TestApplyLeaderBindingsReconfigured(t *testing.T) {
 	}
 	if got := binding.Keys(); !reflect.DeepEqual(got, []string{"ctrl+d"}) {
 		t.Errorf("direct session_delete = %v, want [ctrl+d]", got)
-	}
-	if binding, ok := leaderDirect[leaderCopyMessage]; !ok {
-		t.Fatal("messages_copy must be registered as a direct binding")
-	} else if got := binding.Keys(); !reflect.DeepEqual(got, []string{"ctrl+c"}) {
-		t.Errorf("direct messages_copy = %v, want [ctrl+c]", got)
 	}
 	if _, ok := leaderDirect[leaderCompactSession]; ok {
 		t.Error("disabled session_compact must not register a direct binding")
