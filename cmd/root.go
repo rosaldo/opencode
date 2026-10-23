@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 	"github.com/opencode-ai/opencode/internal/logging"
 	"github.com/opencode-ai/opencode/internal/plugin"
 	"github.com/opencode-ai/opencode/internal/pubsub"
+	"github.com/opencode-ai/opencode/internal/session"
 	"github.com/opencode-ai/opencode/internal/tui"
 	"github.com/opencode-ai/opencode/internal/version"
 	"github.com/spf13/cobra"
@@ -35,8 +37,11 @@ to assist developers in writing, debugging, and understanding code directly from
   # Run with debug logging
   opencode -d
 
-  # Run with debug logging in a specific directory
-  opencode -d -c /path/to/project
+  # Run in a specific directory
+  opencode /path/to/project
+
+  # Continue the most recent session
+  opencode -c
 
   # Print version
   opencode -v
@@ -47,6 +52,7 @@ to assist developers in writing, debugging, and understanding code directly from
   # Run a single non-interactive prompt with JSON output format
   opencode -p "Explain the use of context in Go" -f json
   `,
+	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// If the help flag is set, show the help message
 		if cmd.Flag("help").Changed {
@@ -70,6 +76,9 @@ to assist developers in writing, debugging, and understanding code directly from
 			return fmt.Errorf("invalid format option: %s\n%s", outputFormat, format.GetHelpText())
 		}
 
+		if cwd == "" && len(args) > 0 {
+			cwd = args[0]
+		}
 		if cwd != "" {
 			err := os.Chdir(cwd)
 			if err != nil {
@@ -112,6 +121,14 @@ to assist developers in writing, debugging, and understanding code directly from
 		// Load plugins (Spec 10). Failures are isolated and logged.
 		initPlugins()
 
+		// Continue the most recent session in this directory (~= opencode -c).
+		continueSession, _ := cmd.Flags().GetBool("continue")
+		startSessionID := ""
+		if continueSession {
+			sessions, err := app.Sessions.List(ctx)
+			startSessionID = lastSessionID(sessions, err, cwd)
+		}
+
 		// Non-interactive mode
 		if prompt != "" {
 			// Run non-interactive flow using the App method
@@ -122,7 +139,7 @@ to assist developers in writing, debugging, and understanding code directly from
 		// Set up the TUI
 		zone.NewGlobal()
 		program := tea.NewProgram(
-			tui.New(app),
+			tui.NewWithSession(app, startSessionID),
 			tea.WithAltScreen(),
 			tea.WithMouseCellMotion(),
 		)
@@ -224,6 +241,26 @@ func initMCPTools(ctx context.Context, app *app.App) {
 	}()
 }
 
+// lastSessionID picks the session `-c` should resume: the most recent session
+// created for this directory (sessions store "" while they follow the launch
+// directory, so those still match).
+func lastSessionID(sessions []session.Session, err error, dir string) string {
+	if err != nil {
+		logging.Warn("Failed to list sessions", "error", err)
+		return ""
+	}
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		abs = dir
+	}
+	for _, s := range sessions {
+		if s.WorkingDirectory == "" || s.WorkingDirectory == abs {
+			return s.ID
+		}
+	}
+	return ""
+}
+
 func setupSubscriber[T any](
 	ctx context.Context,
 	wg *sync.WaitGroup,
@@ -310,7 +347,8 @@ func init() {
 	rootCmd.Flags().BoolP("help", "h", false, "Help")
 	rootCmd.Flags().BoolP("version", "v", false, "Version")
 	rootCmd.Flags().BoolP("debug", "d", false, "Debug")
-	rootCmd.Flags().StringP("cwd", "c", "", "Current working directory")
+	rootCmd.Flags().String("cwd", "", "Current working directory (or pass it as an argument)")
+	rootCmd.Flags().BoolP("continue", "c", false, "Continue the last session")
 	rootCmd.Flags().StringP("prompt", "p", "", "Prompt to run in non-interactive mode")
 
 	// Add format flag with validation logic

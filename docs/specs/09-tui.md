@@ -478,6 +478,17 @@ Fechar lacunas da TUI: **keybinds configuráveis**, suporte a **mouse/scroll**, 
       serviços por sessão). "Move session to worktree" do TS **não** foi implementado — só a
       troca de diretório (decisão do usuário).
 
+  - **CLI de sessão (09w)** — feito:
+    - `opencode [directory]` inicia no diretório informado (paridade com o TS; `--cwd`
+      continua aceito, mas sem `-c`); `-c`/`--continue` retoma a sessão mais recente criada
+      para esse diretório (sessões com `working_directory` vazio contam, pois seguem o
+      diretório de lançamento). A sessão inicial é carregada no `Init` do TUI via
+      `chat.SessionSelectedMsg`, com sidebar e transcript populados.
+    - Testes: `cmd/root_test.go` (`lastSessionID`: projeto atual, outro projeto, legado,
+      lista vazia/erro).
+    - Pendente consciente: `-s/--session <id>` do TS (continuar/criar por ID) ainda não
+      implementado.
+
 - Pendências conscientes: `/undo`/`/redo` não reexecutam o agent (comportamento igual ao
   TS). Rollback usa snapshots de arquivos com as limitações listadas na Spec 09k (sem
   symlinks/modos, ignora arquivos ignorados pelo git). Worktrees por sessão ("Move session

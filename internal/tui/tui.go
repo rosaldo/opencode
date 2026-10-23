@@ -786,6 +786,9 @@ type appModel struct {
 	showSessionMoveDialog bool
 	sessionMoveDialog     dialog.SessionMoveDialog
 
+	// initialSessionID resumes a session at startup (opencode -c).
+	initialSessionID string
+
 	showStashDialog bool
 	stashDialog     dialog.StashDialog
 
@@ -839,6 +842,18 @@ func (a appModel) Init() tea.Cmd {
 	cmds = append(cmds, cmd)
 	cmd = a.connectDialog.Init()
 	cmds = append(cmds, cmd)
+
+	if a.initialSessionID != "" {
+		id := a.initialSessionID
+		app := a.app
+		cmds = append(cmds, func() tea.Msg {
+			sess, err := app.Sessions.Get(context.Background(), id)
+			if err != nil {
+				return util.ReportError(err)
+			}
+			return chat.SessionSelectedMsg(sess)
+		})
+	}
 
 	// Check if we should show the init dialog
 	cmds = append(cmds, func() tea.Msg {
@@ -2227,6 +2242,12 @@ func (a appModel) View() string {
 }
 
 func New(app *app.App) tea.Model {
+	return NewWithSession(app, "")
+}
+
+// NewWithSession builds the TUI; sessionID, when set, is selected at startup
+// (the `opencode -c` flag).
+func NewWithSession(app *app.App, sessionID string) tea.Model {
 	applyKeybinds()
 	startPage := page.ChatPage
 	model := &appModel{
@@ -2254,7 +2275,8 @@ func New(app *app.App) tea.Model {
 			page.ChatPage: page.NewChatPage(app),
 			page.LogsPage: page.NewLogsPage(),
 		},
-		filepicker: dialog.NewFilepickerCmp(app),
+		filepicker:       dialog.NewFilepickerCmp(app),
+		initialSessionID: sessionID,
 	}
 
 	model.RegisterCommand(dialog.Command{

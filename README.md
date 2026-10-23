@@ -321,11 +321,14 @@ The output format is implemented as a strongly-typed `OutputFormat` in the codeb
 
 ## Command-line Flags
 
+Usage: `opencode [directory]` starts in that directory (like the TS version).
+
 | Flag              | Short | Description                                         |
 | ----------------- | ----- | --------------------------------------------------- |
 | `--help`          | `-h`  | Display help information                            |
 | `--debug`         | `-d`  | Enable debug mode                                   |
-| `--cwd`           | `-c`  | Set current working directory                       |
+| `--cwd`           |       | Set current working directory                       |
+| `--continue`      | `-c`  | Continue the most recent session in this directory  |
 | `--prompt`        | `-p`  | Run a single prompt in non-interactive mode         |
 | `--output-format` | `-f`  | Output format for non-interactive mode (text, json) |
 | `--quiet`         | `-q`  | Hide spinner in non-interactive mode                |
