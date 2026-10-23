@@ -508,10 +508,14 @@ func (m *messagesCmp) help() string {
 func (m *messagesCmp) initialScreen() string {
 	baseStyle := styles.BaseStyle()
 
+	sess := m.session
+	if sess.ID == "" {
+		sess = session.Session{}
+	}
 	return baseStyle.Width(m.width).Render(
 		lipgloss.JoinVertical(
 			lipgloss.Top,
-			header(m.width, m.session),
+			header(m.width, sess),
 			"",
 			lspsConfigured(m.width),
 		),

@@ -1469,8 +1469,7 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					if ok {
 						return a.runLeaderAction(action)
 					}
-					// Any other key just cancels the sequence.
-					return a, nil
+					// Any other key cancels the sequence but must not be swallowed.
 				}
 			}
 			if key.Matches(msg, keys.Leader) {
@@ -1572,6 +1571,9 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		f, filepickerCmd := a.filepicker.Update(msg)
 		a.filepicker = f.(dialog.FilepickerCmp)
 		cmds = append(cmds, filepickerCmd)
+		if a.showFilepicker && a.filepicker.IsCWDFocused() {
+			return a, tea.Batch(cmds...)
+		}
 
 	}
 
@@ -1581,6 +1583,9 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, filepickerCmd)
 		// Only block key messages send all other messages down
 		if _, ok := msg.(tea.KeyMsg); ok {
+			return a, tea.Batch(cmds...)
+		}
+		if a.filepicker.IsCWDFocused() {
 			return a, tea.Batch(cmds...)
 		}
 	}

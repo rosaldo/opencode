@@ -2,6 +2,7 @@ package chat
 
 import (
 	"fmt"
+	"os"
 	"regexp"
 	"sort"
 	"strings"
@@ -186,6 +187,11 @@ func cwd(width int, session session.Session) string {
 	dir := session.WorkingDirectory
 	if dir == "" {
 		dir = config.WorkingDirectory()
+	}
+	if dir == "" {
+		if wd, err := os.Getwd(); err == nil {
+			dir = wd
+		}
 	}
 	cwd := fmt.Sprintf("cwd: %s", dir)
 	t := theme.CurrentTheme()
