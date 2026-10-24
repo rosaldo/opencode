@@ -99,8 +99,9 @@ type clipboardCmd struct {
 }
 
 // WriteClipboardText replaces the system clipboard contents with text
-// (Spec 09j, messages_copy). It returns ErrClipboardUnavailable when no helper
-// is present or none of them accepts the text.
+// (Spec 09j, messages_copy). It writes to both the CLIPBOARD and PRIMARY
+// selections when possible so terminal mouse selections and paste behave
+// consistently across X11/Wayland.
 func WriteClipboardText(text string) error {
 	var candidates []clipboardCmd
 	switch runtime.GOOS {
@@ -109,7 +110,9 @@ func WriteClipboardText(text string) error {
 	default:
 		candidates = []clipboardCmd{
 			{name: "wl-copy"},
+			{name: "wl-copy", args: []string{"--primary"}},
 			{name: "xclip", args: []string{"-selection", "clipboard"}},
+			{name: "xclip", args: []string{"-selection", "primary"}},
 		}
 	}
 	return writeClipboardWith(text, candidates)
@@ -118,6 +121,8 @@ func WriteClipboardText(text string) error {
 // writeClipboardWith is WriteClipboardText with the helper list made explicit
 // so tests can drive it without touching a real clipboard.
 func writeClipboardWith(text string, candidates []clipboardCmd) error {
+	var firstErr error
+	wrote := false
 	for _, c := range candidates {
 		path, lookErr := exec.LookPath(c.name)
 		if lookErr != nil {
@@ -129,8 +134,18 @@ func writeClipboardWith(text string, candidates []clipboardCmd) error {
 		runErr := run.Run()
 		cancel()
 		if runErr == nil {
-			return nil
+			wrote = true
+			continue
 		}
+		if firstErr == nil {
+			firstErr = runErr
+		}
+	}
+	if wrote {
+		return nil
+	}
+	if firstErr != nil {
+		return firstErr
 	}
 	return ErrClipboardUnavailable
 }
