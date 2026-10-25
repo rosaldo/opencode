@@ -54,7 +54,7 @@ const noneValue = "none"
 // defaultKeybinds are the built-in bindings, matching the pre-Spec-09 keymap so
 // that behaviour is unchanged when no keybinds are configured.
 var defaultKeybinds = map[KeybindID]string{
-	KeybindAppExit:        "ctrl+q",
+	KeybindAppExit:        "ctrl+c",
 	KeybindCommandList:    "ctrl+k",
 	KeybindCommandPalette: "ctrl+p",
 	KeybindAgentList:      "tab",

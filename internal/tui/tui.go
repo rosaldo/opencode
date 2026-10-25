@@ -95,8 +95,8 @@ var keys = keyMap{
 	),
 
 	Quit: key.NewBinding(
-		key.WithKeys("ctrl+q"),
-		key.WithHelp("ctrl+q", "quit"),
+		key.WithKeys("ctrl+c"),
+		key.WithHelp("ctrl+c", "quit"),
 	),
 	Help: key.NewBinding(
 		key.WithKeys("ctrl+_", "ctrl+h"),
@@ -186,7 +186,7 @@ func applyKeybinds() {
 	resolvedKeybinds = kb
 	keys = keyMap{
 		Logs:           binding(KeybindLogsToggle, "logs", []string{"ctrl+l"}),
-		Quit:           binding(KeybindAppExit, "quit", []string{"ctrl+q"}),
+		Quit:           binding(KeybindAppExit, "quit", []string{"ctrl+c"}),
 		Help:           binding(KeybindHelpToggle, "toggle help", []string{"ctrl+_", "ctrl+h"}),
 		SwitchSession:  binding(KeybindSessionList, "switch session", []string{"ctrl+s"}),
 		SwitchAgent:    binding(KeybindAgentList, "switch agent", []string{"tab", "ctrl+a"}),
