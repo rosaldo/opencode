@@ -927,8 +927,6 @@ func (a appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			keyMsg = tea.KeyMsg{Type: tea.KeyUp}
 		case tea.MouseButtonWheelDown:
 			keyMsg = tea.KeyMsg{Type: tea.KeyDown}
-		case tea.MouseButtonLeft:
-			return a, a.forwardMouseClick(msg)
 		default:
 			return a, nil
 		}
