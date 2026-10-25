@@ -18,7 +18,7 @@ func TestResolveKeybindsDefaults(t *testing.T) {
 	}
 	// Defaults must equal the pre-Spec-09 keymap.
 	cases := map[KeybindID][]string{
-		KeybindAppExit:         {"ctrl+c"},
+		KeybindAppExit:         {"ctrl+q"},
 		KeybindCommandList:     {"ctrl+k"},
 		KeybindAgentList:       {"tab"},
 		KeybindLogsToggle:      {"ctrl+l"},

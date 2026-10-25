@@ -2,6 +2,7 @@
 
 > Generated from `git` by `scripts/gen-changelog.sh` — do not edit by hand.
 
+- **v1.25.8** (2026-10-25) · `fix` — tui: ctrl+q quit, allow native mouse text selection
 - **v1.25.7** (2026-10-25) · `fix` — tui: ignore left mouse for zone clicks to allow native selection
 - **v1.25.6** (2026-10-25) · `fix` — tui: disable mouse cell motion for native selection copy
 - **v1.25.5** (2026-10-24) · `fix` — tui: disable bracketed paste for ctrl+v clipboard
