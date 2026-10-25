@@ -142,6 +142,7 @@ to assist developers in writing, debugging, and understanding code directly from
 			tui.NewWithSession(app, startSessionID),
 			tea.WithAltScreen(),
 			tea.WithMouseCellMotion(),
+			tea.WithoutBracketedPaste(),
 		)
 
 		// Setup the subscriptions, this will send services events to the TUI
