@@ -38,7 +38,9 @@ func ClipboardImage() (content []byte, mimeType, fileName string, err error) {
 	default: // linux and others
 		candidates = []cmd{
 			{name: "wl-paste", args: []string{"--no-newline", "--type", "image/png"}, mime: "image/png", ext: "png"},
+			{name: "wl-paste", args: []string{"--no-newline", "--primary", "--type", "image/png"}, mime: "image/png", ext: "png"},
 			{name: "xclip", args: []string{"-selection", "clipboard", "-t", "image/png", "-o"}, mime: "image/png", ext: "png"},
+			{name: "xclip", args: []string{"-selection", "primary", "-t", "image/png", "-o"}, mime: "image/png", ext: "png"},
 		}
 	}
 
@@ -73,7 +75,9 @@ func ClipboardText() (string, error) {
 	default:
 		candidates = []cmd{
 			{name: "wl-paste", args: []string{"--no-newline"}},
+			{name: "wl-paste", args: []string{"--no-newline", "--primary"}},
 			{name: "xclip", args: []string{"-selection", "clipboard", "-o"}},
+			{name: "xclip", args: []string{"-selection", "primary", "-o"}},
 		}
 	}
 	for _, c := range candidates {

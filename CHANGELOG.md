@@ -2,6 +2,7 @@
 
 > Generated from `git` by `scripts/gen-changelog.sh` — do not edit by hand.
 
+- **v1.25.3** (2026-10-24) · `fix` — tui: read image/text from clipboard and primary
 - **v1.25.2** (2026-10-23) · `fix` — tui: copy to clipboard and primary selection
 - **v1.25.1** (2026-10-23) · `fix` — tui: ctrl+c native select copy, messages copy via leader
 - **v1.25.0** (2026-10-23) · `feat` — tui: mouse selection native, ctrl+c copy message, ctrl+q quit, ctrl+v paste
