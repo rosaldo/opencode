@@ -141,7 +141,6 @@ to assist developers in writing, debugging, and understanding code directly from
 		program := tea.NewProgram(
 			tui.NewWithSession(app, startSessionID),
 			tea.WithAltScreen(),
-			tea.WithMouseCellMotion(),
 			tea.WithoutBracketedPaste(),
 		)
 

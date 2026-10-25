@@ -2,6 +2,7 @@
 
 > Generated from `git` by `scripts/gen-changelog.sh` — do not edit by hand.
 
+- **v1.25.6** (2026-10-25) · `fix` — tui: disable mouse cell motion for native selection copy
 - **v1.25.5** (2026-10-24) · `fix` — tui: disable bracketed paste for ctrl+v clipboard
 - **v1.25.4** (2026-10-24) · `fix` — tui: restore ctrl+c quit, mouse cell motion
 - **v1.25.3** (2026-10-24) · `fix` — tui: read image/text from clipboard and primary
